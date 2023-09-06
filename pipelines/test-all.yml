@@ -13,7 +13,7 @@ steps:
   displayName: Cargo build
 - script: cargo test --all
   displayName: Cargo test
-- task: PublishBuildArtifact
+- task: PublishBuildArtifacts@1
   inputs:
     pathToPublish: './target/debug/server'
     artifactName: server
