@@ -1,8 +1,3 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
 - main
 
@@ -18,3 +13,7 @@ steps:
   displayName: Cargo build
 - script: cargo test --all
   displayName: Cargo test
+- task: PublishBuildArtifact
+  inputs:
+    pathToPublish: './target/debug/server'
+    artifactName: server
