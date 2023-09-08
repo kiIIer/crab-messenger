@@ -1,39 +1,34 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use crab_messenger::messenger::{
+    messenger_server::{Messenger, MessengerServer},
+    Message,
+};
+use tonic::{transport::Server, Request, Response, Status};
 
-use std::error::Error;
+#[derive(Default)]
+pub struct MyMessenger {}
+
+#[tonic::async_trait]
+impl Messenger for MyMessenger {
+    async fn chat(&self, request: Request<Message>) -> Result<Response<Message>, Status> {
+        println!("Got a request: {:?}", request);
+
+        let reply = Message {
+            message: request.into_inner().message,
+        };
+
+        Ok(Response::new(reply))
+    }
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let addr = "127.0.0.1:8080".to_string();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let addr = "[::1]:50051".parse()?;
+    let greeter = MyMessenger::default();
 
-    let listener = TcpListener::bind(&addr).await?;
-    println!("Listening on: {}", addr);
+    Server::builder()
+        .add_service(MessengerServer::new(greeter))
+        .serve(addr)
+        .await?;
 
-    loop {
-        // Asynchronously wait for an inbound socket.
-        let (mut socket, _) = listener.accept().await?;
-
-        tokio::spawn(async move {
-            let mut buf = vec![0; 1024];
-
-            loop {
-                let n = socket
-                    .read(&mut buf)
-                    .await
-                    .expect("failed to read data from socket");
-
-                if n == 0 {
-                    return;
-                }
-
-                println!("got smth");
-
-                socket
-                    .write_all(&buf[0..n])
-                    .await
-                    .expect("failed to write data to socket");
-            }
-        });
-    }
+    Ok(())
 }

@@ -1,0 +1,10 @@
+syntax = "proto3";
+package messenger;
+
+service Messenger{
+    rpc Chat(Message) returns (Message);
+}
+
+message Message {
+    string message = 1;
+}
