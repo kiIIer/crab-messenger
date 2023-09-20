@@ -1,0 +1,22 @@
+@startuml messenger
+!theme crt-green
+
+left to right direction
+
+:User: as User
+
+rectangle "Messenger" {
+    User --> (Read Messages)
+    User --> (Write Messages)
+    User --> (Create Chat Room)
+    User --> (Invite Users to Chat Room)
+    User --> (Leave Chat Room)
+    User --> (Search Users)
+    User --> (Invite to Personal Conversation)
+    User --> (Accept Invites)
+    User --> (Reject Invites)
+    User --> (Start Video and Audio Call)
+}
+
+
+@enduml
