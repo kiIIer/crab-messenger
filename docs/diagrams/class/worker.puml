@@ -1,0 +1,45 @@
+@startuml worker
+!theme crt-green
+
+interface ChannelFactory{
+    + create() -> Channel
+}
+
+struct ChannelFactoryImpl
+
+ChannelFactoryImpl --|> ChannelFactory : implements
+
+' invite created, invite accepted, message
+
+interface Consumer_V{
+    + consume()
+}
+
+struct InviteCreatedConsumer
+
+InviteCreatedConsumer --|> Consumer_V : implements<Invite>
+ChannelFactory --o InviteCreatedConsumer
+
+struct InviteAcceptedConsumer
+
+InviteAcceptedConsumer --|> Consumer_V : implements<InviteAnswer>
+ChannelFactory --o InviteAcceptedConsumer
+
+struct MessageConsumer
+
+MessageConsumer --|> Consumer_V : implements<Message>
+ChannelFactory --o MessageConsumer
+
+interface Worker{
+    + work() -> Result
+}
+
+struct WorkerImpl
+
+WorkerImpl --|> Worker : implements
+
+Consumer_V --o WorkerImpl : <Invite>
+Consumer_V --o WorkerImpl : <InviteAnswer>
+Consumer_V --o WorkerImpl : <Message>
+
+@enduml

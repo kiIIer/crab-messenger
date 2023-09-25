@@ -1,0 +1,64 @@
+@startuml client_state
+!theme crt-green
+
+struct AppState{
+    messenger: MessengerState
+    invites: InvitesState
+    search: SearchState
+    menu: MenuState
+    tutorial: TutorialState
+    error: ErrorState
+    edit_mode: bool
+}
+
+struct ErrorState{
+    displayed: bool
+    error: String
+}
+
+ErrorState --* AppState
+
+struct TutorialState{
+    text: String
+}
+
+TutorialState --* AppState
+
+struct MenuState{
+    selected_component: i32
+}
+
+MenuState --* AppState 
+
+struct SearchState {
+    textbox_text: String
+    result: Vec<User>
+    selected_id: i32
+}
+
+SearchState --* AppState
+
+struct InvitesState {
+    selected_id: i32
+    invites: Vec<Invite>
+}
+
+InvitesState --* AppState
+
+struct MessengerState {
+    chats: Vec<ChatState>
+    selected_chat: i32
+    messaes: Vec<Message>
+}
+
+MessengerState --* AppState
+
+struct ChatState{
+    chat: Chat
+    scroll: i32
+    textbox_text: String
+}
+
+ChatState --* MessengerState
+
+@enduml

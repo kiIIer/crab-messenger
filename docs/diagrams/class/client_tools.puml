@@ -1,0 +1,55 @@
+@startuml client_tools
+!theme crt-green
+
+interface Store{
+    + dispatch(action: Action)
+    + select() -> AppState
+}
+
+interface Renderer {
+    + render(state: AppState)
+}
+
+struct RendererImpl
+
+RendererImpl --|> Renderer : implements
+
+interface MessengerClient {
+    + receive()
+    + send(message: Message)
+}
+struct MessengerClientImpl
+
+MessengerClientImpl --|> MessengerClient : implements
+Store --o MessengerClientImpl
+
+interface InvitesClient{
+    + create(invite: Invite)
+    + answer(invite: InviteAnswer)
+    + receive()
+}
+
+struct InvitesClientImpl
+
+InvitesClientImpl --|> InvitesClient : implements
+Store --o InvitesClientImpl
+
+interface UsersClient{
+    + searchUsers(query: SearchCriteria) -> Vec<User>
+}
+
+struct UsersClientImpl
+
+UsersClientImpl --|> UsersClient : implements
+
+interface ChatsClient{
+    + getUserChats() -> Vec<Chat>
+    + getChat(id: i32) -> Chat
+    + createChat(name: String) -> Result
+}
+
+struct ChatsClientImpl
+
+ChatsClientImpl --|> ChatsClient : implements
+
+@enduml

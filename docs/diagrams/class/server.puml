@@ -1,0 +1,139 @@
+@startuml server
+!theme crt-green
+
+interface CrabMessenger{
+    + chat(message: Stream<Message>) -> Stream<Message>
+    + getUserChats() -> Vec<Chat>
+    + getChat(chat_id: i32) -> Chat
+    + createChat(name: String) -> Result
+    + searchUsers(query: SearchCriteria) -> Vec<User>
+    + answerInvite(answer: InviteAnswer) -> Result
+    + createInvite(invite: Invite) -> Result
+    + receiveInvites() -> Stream<Invite>
+}
+
+struct CrabMessengerImpl{
+}
+
+CrabMessengerImpl --|> CrabMessenger : implements
+
+interface Messenger{
+    + chat(message: Stream<Message>) -> Stream<Message>
+}
+
+struct MessengerImpl{
+}
+
+MessengerImpl --|> Messenger : implements
+
+Messenger --o CrabMessengerImpl
+
+interface ChatService {
+    + getUserChats() -> Vec<Chat>
+    + getChat(chat_id: i32) -> Chat
+    + createChat(name: String) -> Result
+}
+
+struct ChatServiceImpl
+
+ChatServiceImpl --|> ChatService : implements
+
+ChatService --o CrabMessengerImpl
+
+interface InviteService{
+    + answerInvite(answer: InviteAnswer) -> Result
+    + createInvite(invite: Invite) -> Result
+    + receiveInvites() -> Stream<Invite>
+}
+
+struct InviteServiceImpl
+
+InviteServiceImpl --|> InviteService : implements
+
+InviteService --o CrabMessengerImpl
+
+interface UserService{
+    + searchUsers(query: SearchCriteria) -> Vec<User>
+}
+
+struct UserServiceImpl
+
+UserServiceImpl --|> UserService : implements
+
+UserService --o CrabMessengerImpl
+
+interface InviteConsumer{
+    + consume(user_id: i32, client_tx: Transmitter)
+}
+
+struct InviteConsumerImpl
+
+InviteConsumerImpl --|> InviteConsumer : implements
+
+InviteConsumer --o InviteServiceImpl
+
+interface MessageConsumer {
+    + consume(chat_rx: Reciever, client_tx: Transmitter)
+}
+
+struct MessageConsumerImpl
+
+MessageConsumerImpl --|> MessageConsumer : implements
+
+MessageConsumer --o MessengerImpl
+
+interface ChannelFactory{
+    + create() -> Channel
+}
+
+struct ChannelFactoryImpl
+
+ChannelFactoryImpl --|> ChannelFactory : implements
+
+ChannelFactory --o MessageConsumerImpl
+ChannelFactory --o InviteConsumerImpl
+
+interface Producer_V {
+    + produce(produce: V) -> Result
+}
+
+struct MessageProducer
+
+MessageProducer --|> Producer_V : implements<Message>
+
+ChannelFactory --o MessageProducer
+Producer_V --o MessengerImpl : <Message>
+
+struct InviteCreatedProducer
+
+InviteCreatedProducer --|> Producer_V : implements<Invite>
+
+ChannelFactory --o InviteCreatedProducer
+Producer_V --o InviteServiceImpl : <Invite>
+Producer_V --o InviteServiceImpl : <InviteAnswer>
+
+struct InviteAcceptedProducer
+
+ChannelFactory --o InviteAcceptedProducer
+InviteAcceptedProducer --|> Producer_V : implements<InviteAnswer>
+
+interface ChatNotifier {
+    + notify(user_id: i32, consumer_tx: Transmitter)
+}
+
+struct ChatNotifierImpl
+
+ChatNotifierImpl --|> ChatNotifier : implements
+ChatNotifier --o CrabMessengerImpl
+
+interface InviteAcceptedConsumer {
+    + consume() -> Reciever
+}
+
+struct InviteAcceptedConsumerImpl
+
+InviteAcceptedConsumerImpl --|> InviteAcceptedConsumer : implements
+InviteAcceptedConsumer --o ChatNotifierImpl
+ChannelFactory --o InviteAcceptedConsumerImpl
+
+@enduml
