@@ -1,0 +1,25 @@
+@startuml deployment
+!theme crt-green
+
+cloud Cloud {
+    node Kubernetes{
+        node WorkerNode {
+            artifact Worker
+            artifact Server
+            queue Rabbit
+            database Postgres
+        }
+    }
+}
+
+node ClientPC{
+    artifact Client
+}
+
+Client <--> Server : gRPC
+Server <--> Rabbit : AMQP
+Server <--> Postgres : TCP
+Worker <--> Postgres : TCP
+Worker <--> Rabbit : AMQP
+
+@enduml
