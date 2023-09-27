@@ -1,0 +1,31 @@
+@startuml send-message
+!theme crt-green
+
+box User 1
+actor User1
+participant Client1
+end box
+
+box Kubernetes
+participant Server
+queue Rabbit
+participant Worker
+database Postgres
+end box
+
+box User 2
+participant Client2
+actor User2
+end box
+
+User1 -> Client1 : Hello everyone
+Client1 -> Server : Message
+Server -> Rabbit : Send **CreateMessage** message
+Rabbit -> Worker : Consume **CreateMessage** message
+Worker -> Postgres : Save Message
+Worker -> Rabbit : Publish **MessageCreated** message
+Rabbit -> Server : Consume **MessageCreated** message
+Server -> Client2 : Message
+Client2 -> User2 : Hello everyone
+
+@enduml
