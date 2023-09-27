@@ -1,0 +1,34 @@
+@startuml client
+!theme crt-green
+
+[Store]
+
+[ReducerVecFactory]
+
+[Reducer]
+
+Store -(0- ReducerVecFactory
+
+Store -(0- Reducer
+
+[MessengerClient]
+
+MessengerClient -(0- Store
+Reducer -(0- MessengerClient
+
+[InvitesClient]
+
+InvitesClient -(0- Store
+Reducer -(0- InvitesClient
+
+[Runtime]
+
+[Renderer]
+
+[UsersClient]
+
+Runtime -(0- Renderer
+Runtime -(0- Store
+Runtime -(0- UsersClient
+
+@enduml
