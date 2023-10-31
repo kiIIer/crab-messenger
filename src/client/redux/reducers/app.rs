@@ -4,6 +4,7 @@ use crate::client::redux::reducers::app::login::{build_reducers_login_module, Lo
 use crate::client::redux::reducers::Reducer;
 use crate::client::redux::state::State;
 use crossbeam_channel::Sender;
+use crossterm::event::{Event, KeyCode, KeyModifiers};
 use shaku::{module, Component, Interface};
 use std::sync::Arc;
 use tokio::runtime::Handle;
@@ -27,6 +28,13 @@ impl Reducer for AppReducerImpl {
         dispatch_tx: Sender<Action>,
         handle: Handle,
     ) -> ReduceResult {
+        if let Action::Input(Event::Key(key)) = action {
+            if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+                let mut new_state = state.clone();
+                new_state.should_exit = true;
+                return ReduceResult::Consumed(new_state);
+            }
+        }
         let login_result = self
             .login_reducer
             .reduce(action, state, dispatch_tx, handle);

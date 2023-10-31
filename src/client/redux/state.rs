@@ -1,5 +1,5 @@
-use std::sync::{Arc, RwLock};
 use crate::auth::AuthState;
+use std::sync::{Arc, RwLock};
 
 pub mod tab;
 
@@ -8,6 +8,7 @@ pub struct State {
     pub code: Option<String>,
     pub link: Option<String>,
     pub messages: Arc<RwLock<Vec<String>>>,
+    pub should_exit: bool,
 }
 
 impl State {
@@ -16,12 +17,14 @@ impl State {
         code: Option<String>,
         link: Option<String>,
         messages: Arc<RwLock<Vec<String>>>,
+        should_exit: bool,
     ) -> Self {
         Self {
             auth_state: poll_response,
             code,
             link,
             messages,
+            should_exit,
         }
     }
 }
@@ -33,6 +36,7 @@ impl Default for State {
             code: None,
             link: None,
             messages: Arc::new(RwLock::new(Vec::new())),
+            should_exit: false,
         }
     }
 }
@@ -44,6 +48,7 @@ impl Clone for State {
             self.code.clone(),
             self.link.clone(),
             self.messages.clone(),
+            self.should_exit.clone(),
         )
     }
 }

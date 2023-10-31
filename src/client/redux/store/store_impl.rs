@@ -47,6 +47,7 @@ impl Store for StoreImpl {
                 if let ReduceResult::Consumed(new_state) = reduce_result {
                     state = new_state.clone();
                 }
+                
                 select_tx.send(state.clone()).unwrap();
             }
         });

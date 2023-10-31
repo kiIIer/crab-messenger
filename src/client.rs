@@ -1,3 +1,4 @@
+use crate::client::input::{build_input_module, Input, InputModule};
 use crate::client::redux::action::Action;
 use crate::client::redux::state::State;
 use crate::client::redux::store::build_store_module;
@@ -5,7 +6,8 @@ use crate::client::redux::{build_redux_module, store::Store, store::StoreModule}
 use crate::client::view::app::{build_app_view_module, AppView, AppViewModule};
 use crossbeam_channel::Sender;
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, EnterAlternateScreen,
+    LeaveAlternateScreen,
 };
 use crossterm::ExecutableCommand;
 use ratatui::backend::CrosstermBackend;
@@ -15,13 +17,14 @@ use shaku::{module, Component, Interface};
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{io, thread};
+use std::{io, panic, thread};
 use tokio::runtime::Handle;
 
+mod input;
 mod redux;
 mod view;
 pub trait Client: Interface {
-    fn run_client(&self) -> anyhow::Result<()>;
+    fn run_client(self: Arc<Self>) -> anyhow::Result<()>;
 }
 
 #[derive(Component)]
@@ -32,15 +35,20 @@ pub struct ClientImpl {
 
     #[shaku(inject)]
     view: Arc<dyn AppView>,
+
+    #[shaku(inject)]
+    input: Arc<dyn Input>,
 }
 
 impl Client for ClientImpl {
-    fn run_client(&self) -> anyhow::Result<()> {
+    fn run_client(self: Arc<Self>) -> anyhow::Result<()> {
         self.setup_terminal()?;
 
         defer! {
             self.shutdown_terminal();
         }
+
+        self.clone().set_panic_handlers()?;
 
         self.store.get_dispatch().send(Action::StartLogin).unwrap();
 
@@ -49,6 +57,7 @@ impl Client for ClientImpl {
         let mut terminal = self.start_terminal(io::stdout())?;
 
         self.store.process(Handle::current()).unwrap();
+        self.input.clone().process(self.store.clone());
 
         let tick_dispatch = self.store.get_dispatch();
         tokio::spawn(async move {
@@ -60,6 +69,9 @@ impl Client for ClientImpl {
         });
 
         while let Ok(state) = select.recv() {
+            if state.should_exit {
+                break;
+            }
             terminal.draw(|f| {
                 self.view.draw(f, f.size(), state).expect("Couldn't draw");
             })?;
@@ -97,6 +109,25 @@ impl ClientImpl {
             eprintln!("leave_raw_mode failed:\n{e}");
         }
     }
+
+    fn set_panic_handlers(self: Arc<Self>) -> anyhow::Result<()> {
+        let self1 = self.clone();
+        ctrlc::set_handler(move || {
+            self1.shutdown_terminal();
+            std::process::exit(1);
+        })
+        .expect("Error setting Ctrl-C handler");
+
+        let default_panic_hook = panic::take_hook();
+
+        panic::set_hook(Box::new(move |e| {
+            self.shutdown_terminal();
+
+            default_panic_hook(e);
+        }));
+
+        Ok(())
+    }
 }
 
 module! {
@@ -110,10 +141,21 @@ module! {
         use AppViewModule{
             components = [dyn AppView],
             providers = [],
+        },
+        use InputModule{
+            components = [dyn Input],
+            providers = [],
         }
     }
 }
 
 pub fn build_client_module() -> Arc<ClientModule> {
-    Arc::new(ClientModule::builder(build_store_module(), build_app_view_module()).build())
+    Arc::new(
+        ClientModule::builder(
+            build_store_module(),
+            build_app_view_module(),
+            build_input_module(),
+        )
+        .build(),
+    )
 }
