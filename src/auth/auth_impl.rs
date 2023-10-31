@@ -1,10 +1,16 @@
 use crate::auth::auth_error::AuthError;
-use crate::auth::{Auth, StartFlowResponse};
+use crate::auth::{Auth, AuthState, StartFlowResponse};
 use async_trait::async_trait;
 use reqwest::Client;
+use serde::Deserialize;
 use shaku::Component;
-use std::collections::HashMap;
 use std::time::Duration;
+
+#[derive(Debug, Deserialize)]
+struct ErrorResponse {
+    error: String,
+    error_description: Option<String>,
+}
 
 #[derive(Component)]
 #[shaku(interface = Auth)]
@@ -33,61 +39,42 @@ impl Auth for AuthImpl {
         let client = Client::new();
         let url = format!("https://{}/oauth/device/code", self.domain);
 
-        let form_params = [("client_id", &self.client_id), ("audience", &self.audience)];
+        let form_params = [
+            ("client_id", &self.client_id),
+            ("audience", &self.audience),
+            ("scope", &"openid offline_access".to_string()),
+        ];
 
-        let response_result = client
+        let response = client
             .post(url)
             .header("content-type", "application/x-www-form-urlencoded")
             .form(&form_params)
             .send()
-            .await;
-
-        println!("{:?}", response_result);
-        match response_result {
-            Ok(response) => {
-                let response_json: serde_json::Value = response.json().await.unwrap();
-
-                let device_code = response_json
-                    .get("device_code")
-                    .unwrap()
-                    .to_string()
-                    .strip_prefix("\"")
-                    .and_then(|s| s.strip_suffix("\""))
-                    .unwrap()
-                    .to_string();
-                println!("TO STRING DEVICE CODE: {:?}", device_code);
-
-                let start_flow_response = StartFlowResponse {
-                    device_code,
-                    user_code: response_json.get("user_code").unwrap().to_string(),
-                    verification_uri: response_json.get("verification_uri").unwrap().to_string(),
-                    interval: response_json.get("interval").unwrap().as_i64().unwrap() as i32,
-                };
-
-                println!("GOT THIS: {:?}", start_flow_response);
-
-                Ok(start_flow_response)
-            }
-            Err(err) => Err(AuthError::Other {
+            .await
+            .map_err(|err| AuthError::Other {
                 description: err.to_string(),
-            }),
-        }
+            })?;
+
+        response
+            .json::<StartFlowResponse>()
+            .await
+            .map_err(|_| AuthError::Other {
+                description: "Failed to parse JSON response".to_string(),
+            })
     }
 
     async fn poll_access_token(
         &self,
         device_code: &str,
         interval: i32,
-    ) -> Result<String, AuthError> {
+    ) -> Result<AuthState, AuthError> {
         // Define the URL and form parameters for the token request
         let token_url = format!("https://{}/oauth/token", self.domain);
         let form_params = [
             ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-            ("device_code", &device_code),
+            ("device_code", device_code),
             ("client_id", &self.client_id),
         ];
-
-        println!("USING THIS CODE: {:?}", form_params);
 
         let client = Client::new();
 
@@ -100,38 +87,104 @@ impl Auth for AuthImpl {
                 .form(&form_params)
                 .send()
                 .await;
-            println!("{:?}\n\n", response);
 
             match response {
-                Ok(response) => {
-                    match response.status() {
-                        reqwest::StatusCode::FORBIDDEN => {
-                            continue;
-                        }
-                        reqwest::StatusCode::OK => {
-                            let json_response: serde_json::Value = response.json().await.unwrap();
-                            if let Some(access_token) = json_response.get("access_token") {
-                                if let Some(access_token_str) = access_token.as_str() {
-                                    // Authorization succeeded
-                                    return Ok(access_token_str.to_string());
+                Ok(response) => match response.status() {
+                    reqwest::StatusCode::FORBIDDEN => {
+                        let error_response: Result<serde_json::Value, _> = response.json().await;
+                        match error_response {
+                            Ok(json) => match json.get("error").and_then(|e| e.as_str()) {
+                                Some("authorization_pending") => continue,
+                                Some("access_denied") => return Err(AuthError::AccessDenied),
+                                Some("expired_token") => return Err(AuthError::ExpiredToken),
+                                _ => {
+                                    return Err(AuthError::Other {
+                                        description: json
+                                            .get("error_description")
+                                            .and_then(|e| e.as_str())
+                                            .unwrap_or("Unknown error")
+                                            .to_string(),
+                                    })
                                 }
+                            },
+                            Err(_) => {
+                                return Err(AuthError::Other {
+                                    description: "Failed to parse error response".to_string(),
+                                });
                             }
                         }
-                        _ => {
-                            // Handle other response statuses if necessary
-                            return Err(AuthError::Other {
-                                description: "Unknown error".to_string(),
-                            });
-                        }
                     }
-                }
-                Err(_) => {
-                    // Handle request error if necessary
+                    reqwest::StatusCode::OK => {
+                        let token_response: Result<AuthState, _> = response.json().await;
+                        return match token_response {
+                            Ok(data) => Ok(data),
+                            Err(_) => Err(AuthError::Other {
+                                description: "Failed to parse token response".to_string(),
+                            }),
+                        };
+                    }
+                    _ => {
+                        return Err(AuthError::Other {
+                            description: "Unexpected response status".to_string(),
+                        });
+                    }
+                },
+                Err(err) => {
                     return Err(AuthError::Other {
-                        description: "Request error".to_string(),
+                        description: err.to_string(),
                     });
                 }
             }
         }
+    }
+
+    async fn request_refresh_token(&self, refresh_token: &str) -> Result<AuthState, AuthError> {
+        let token_url = format!("https://{}/oauth/token", self.domain);
+
+        let client = reqwest::Client::new();
+        let form_params = [
+            ("grant_type", "refresh_token"),
+            ("client_id", &self.client_id),
+            ("refresh_token", refresh_token),
+        ];
+
+        let response = client
+            .post(&token_url)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .form(&form_params)
+            .send()
+            .await
+            .map_err(|err| AuthError::Other {
+                description: format!("Request error: {}", err),
+            })?;
+
+        if response.status() != reqwest::StatusCode::OK {
+            let error_response: ErrorResponse =
+                response.json().await.map_err(|err| AuthError::Other {
+                    description: format!("Failed to parse error response: {}", err),
+                })?;
+
+            match error_response.error.as_str() {
+                "authorization_pending" => return Err(AuthError::AccessDenied),
+                "access_denied" => return Err(AuthError::AccessDenied),
+                "expired_token" => return Err(AuthError::ExpiredToken),
+                _ => {
+                    return Err(AuthError::Other {
+                        description: format!(
+                            "{}: {}",
+                            error_response.error,
+                            error_response
+                                .error_description
+                                .unwrap_or_else(|| "Unknown error".to_string())
+                        ),
+                    })
+                }
+            }
+        }
+
+        let poll_response: AuthState = response.json().await.map_err(|err| AuthError::Other {
+            description: format!("Failed to parse JSON response: {}", err),
+        })?;
+        Ok(poll_response)
     }
 }

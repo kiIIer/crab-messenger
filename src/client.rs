@@ -1,74 +1,119 @@
-use crate::client::input::Input;
-use crate::client::redux::actions::Action;
-use crate::client::redux::Store;
-use crate::client::view::AppComponent;
-use anyhow::bail;
-use crossbeam_channel::{Receiver, Select};
-use crossterm::event::Event;
+use crate::client::redux::action::Action;
+use crate::client::redux::state::State;
+use crate::client::redux::store::build_store_module;
+use crate::client::redux::{build_redux_module, store::Store, store::StoreModule};
+use crate::client::view::app::{build_app_view_module, AppView, AppViewModule};
+use crossbeam_channel::Sender;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use crossterm::ExecutableCommand;
-use ratatui::{
-    backend::{Backend, CrosstermBackend},
-    Terminal,
-};
-use std::error::Error;
-use std::io;
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use scopeguard::defer;
+use shaku::{module, Component, Interface};
 use std::io::Write;
+use std::sync::Arc;
+use std::time::Duration;
+use std::{io, thread};
+use tokio::runtime::Handle;
 
-mod input;
 mod redux;
 mod view;
+pub trait Client: Interface {
+    fn run_client(&self) -> anyhow::Result<()>;
+}
 
-pub fn run_app() -> anyhow::Result<()> {
-    setup_terminal();
+#[derive(Component)]
+#[shaku(interface = Client)]
+pub struct ClientImpl {
+    #[shaku(inject)]
+    store: Arc<dyn Store>,
 
-    let mut terminal = start_terminal(io::stdout())?;
-    let input: Input = Input::new();
-    let store: Store = Store::default();
-    let app_component: AppComponent = AppComponent::default();
+    #[shaku(inject)]
+    view: Arc<dyn AppView>,
+}
 
-    loop {
-        let action = select_action(&input.receiver)?;
-        store.dispatch(action);
-        let state = store.get_state();
-        terminal.draw(|f| app_component.draw(f, state))?;
+impl Client for ClientImpl {
+    fn run_client(&self) -> anyhow::Result<()> {
+        self.setup_terminal()?;
+
+        defer! {
+            self.shutdown_terminal();
+        }
+
+        self.store.get_dispatch().send(Action::StartLogin).unwrap();
+
+        let select = self.store.get_select();
+
+        let mut terminal = self.start_terminal(io::stdout())?;
+
+        self.store.process(Handle::current()).unwrap();
+
+        let tick_dispatch = self.store.get_dispatch();
+        tokio::spawn(async move {
+            loop {
+                tick_dispatch.send(Action::Tick).unwrap();
+
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+
+        while let Ok(state) = select.recv() {
+            terminal.draw(|f| {
+                self.view.draw(f, f.size(), state).expect("Couldn't draw");
+            })?;
+        }
+
+        Ok(())
     }
-    shutdown_terminal();
+}
+impl ClientImpl {
+    fn start_terminal<W: Write>(&self, buf: W) -> io::Result<Terminal<CrosstermBackend<W>>> {
+        let backend = CrosstermBackend::new(buf);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.hide_cursor()?;
+        terminal.clear()?;
+
+        Ok(terminal)
+    }
+
+    fn setup_terminal(&self) -> anyhow::Result<()> {
+        enable_raw_mode()?;
+        io::stdout().execute(EnterAlternateScreen)?;
+        Ok(())
+    }
+
+    fn shutdown_terminal(&self) {
+        let leave_screen = io::stdout().execute(LeaveAlternateScreen).map(|_f| ());
+
+        if let Err(e) = leave_screen {
+            eprintln!("leave_screen failed:\n{e}");
+        }
+
+        let leave_raw_mode = disable_raw_mode();
+
+        if let Err(e) = leave_raw_mode {
+            eprintln!("leave_raw_mode failed:\n{e}");
+        }
+    }
 }
 
-fn select_action(rx_input: &Receiver<Event>) -> anyhow::Result<Action> {
-    let mut sel = Select::new();
-    sel.recv(rx_input);
-    let oper = sel.select();
-    let index = oper.index();
-
-    let action = match index {
-        0 => oper.recv(rx_input).map(Action::Input),
-        _ => bail!("unknown select source"),
-    }?;
-
-    Ok(action)
+module! {
+    pub ClientModule {
+        components = [ClientImpl],
+        providers = [],
+        use StoreModule{
+            components = [dyn Store],
+            providers = [],
+        },
+        use AppViewModule{
+            components = [dyn AppView],
+            providers = [],
+        }
+    }
 }
 
-fn setup_terminal() -> Result<(), Box<dyn Error>> {
-    enable_raw_mode()?;
-    io::stdout().execute(EnterAlternateScreen)?;
-    Ok(())
-}
-
-fn shutdown_terminal() {
-    io::stdout().execute(LeaveAlternateScreen);
-
-    disable_raw_mode();
-}
-
-fn start_terminal<W: Write>(buf: W) -> io::Result<Terminal<CrosstermBackend<W>>> {
-    let backend = CrosstermBackend::new(buf);
-    let mut terminal = Terminal::new(backend)?;
-    terminal.hide_cursor()?;
-    terminal.clear()?;
-
-    Ok(terminal)
+pub fn build_client_module() -> Arc<ClientModule> {
+    Arc::new(ClientModule::builder(build_store_module(), build_app_view_module()).build())
 }

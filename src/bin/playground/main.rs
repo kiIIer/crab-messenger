@@ -1,11 +1,11 @@
-use crab_messenger::auth::{Auth, AuthModuleImpl};
-use crab_messenger::RootModule;
+use crab_messenger::client::{build_client_module, Client};
 use shaku::HasComponent;
 use std::sync::Arc;
 
-use crab_messenger::client::run_app;
-
-fn main() -> anyhow::Result<()> {
-    run_app();
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let module = build_client_module();
+    let client: Arc<dyn Client> = module.resolve();
+    client.run_client()?;
     Ok(())
 }

@@ -1,7 +1,9 @@
 use crate::auth::auth_error::AuthError;
 use crate::auth::auth_impl::AuthImpl;
 use async_trait::async_trait;
+use serde::Deserialize;
 use shaku::{module, HasComponent, Interface};
+use std::sync::Arc;
 
 pub mod auth_error;
 pub mod auth_impl;
@@ -13,10 +15,21 @@ pub trait Auth: Interface {
         &self,
         device_code: &str,
         interval: i32,
-    ) -> Result<String, AuthError>;
+    ) -> Result<AuthState, AuthError>;
+
+    async fn request_refresh_token(&self, refresh_token: &str) -> Result<AuthState, AuthError>;
 }
 
-#[derive(Debug)]
+#[derive(Deserialize, Clone)]
+pub struct AuthState {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub id_token: String,
+    pub token_type: String,
+    pub expires_in: i64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StartFlowResponse {
     pub device_code: String,
     pub user_code: String,
@@ -24,11 +37,13 @@ pub struct StartFlowResponse {
     pub interval: i32,
 }
 
-pub trait AuthModule: HasComponent<dyn Auth> {}
-
 module! {
-    pub AuthModuleImpl: AuthModule {
+    pub AuthModule {
         components = [AuthImpl],
         providers = []
     }
+}
+
+pub fn build_auth_module() -> Arc<AuthModule> {
+    Arc::new(AuthModule::builder().build())
 }

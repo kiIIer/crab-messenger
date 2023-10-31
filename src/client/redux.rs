@@ -1,47 +1,23 @@
-use crate::client::redux::actions::Action;
-use crate::client::redux::reducers::AppReducer;
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::client::redux::reducers::{build_reducer_module, Reducer, ReducersModule};
+use shaku::module;
+use std::sync::Arc;
 
-pub mod actions;
-mod reducers;
+pub mod action;
+pub mod reducers;
+pub mod state;
+pub mod store;
 
-#[derive(Default)]
-pub struct Store {
-    state: State,
-    app_reducer: AppReducer,
-}
-
-pub struct State {
-    pub(crate) messages: Rc<RefCell<Vec<String>>>,
-}
-
-impl State {
-    fn new(messages: Rc<RefCell<Vec<String>>>) -> State {
-        State { messages }
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
-        State {
-            messages: Rc::new(RefCell::new(Vec::new())),
+module! {
+    pub ReduxModule{
+        components = [],
+        providers = [],
+        use ReducersModule{
+            components = [],
+            providers = [],
         }
     }
 }
 
-impl Clone for State {
-    fn clone(&self) -> Self {
-        State::new(self.messages.clone())
-    }
-}
-
-impl Store {
-    pub fn get_state(&self) -> State {
-        self.state.clone()
-    }
-
-    pub fn dispatch(&self, action: Action) -> State {
-        self.app_reducer.reduce(action, self.state.clone())
-    }
+pub fn build_redux_module() -> Arc<ReduxModule> {
+    Arc::new(ReduxModule::builder(build_reducer_module()).build())
 }
