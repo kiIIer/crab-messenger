@@ -8,6 +8,7 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 use shaku::{module, Component, Interface};
 use std::sync::Arc;
 use tokio::runtime::Handle;
+use crate::client::redux::state::tab::TabState;
 
 mod login;
 
@@ -23,8 +24,8 @@ pub struct AppReducerImpl {
 impl Reducer for AppReducerImpl {
     fn reduce(
         &self,
-        action: Action,
-        state: State,
+        action: &Action,
+        state: &State,
         dispatch_tx: Sender<Action>,
         handle: Handle,
     ) -> ReduceResult {
@@ -38,7 +39,27 @@ impl Reducer for AppReducerImpl {
         let login_result = self
             .login_reducer
             .reduce(action, state, dispatch_tx, handle);
-        login_result
+
+        match login_result {
+            ReduceResult::Ignored => {},
+            _ => return login_result,
+        }
+
+        if let Action::Input(Event::Key(key)) = action{
+            if key.code == KeyCode::Char('1'){
+                let mut new_state = state.clone();
+                new_state.tab_state = TabState::Home;
+                return ReduceResult::Consumed(new_state)
+            }
+
+            if key.code == KeyCode::Char('0'){
+                let mut new_state = state.clone();
+                new_state.tab_state = TabState::Login;
+                return ReduceResult::Consumed(new_state)
+            }
+        }
+
+        ReduceResult::Ignored
     }
 }
 

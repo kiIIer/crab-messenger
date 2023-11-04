@@ -12,8 +12,8 @@ pub mod app;
 pub trait Reducer: Send + Sync {
     fn reduce(
         &self,
-        action: Action,
-        state: State,
+        action: &Action,
+        state: &State,
         dispatch_tx: Sender<Action>,
         handle: Handle,
     ) -> ReduceResult;

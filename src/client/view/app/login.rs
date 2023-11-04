@@ -21,7 +21,7 @@ impl LoginView for LoginViewImpl {}
 impl View for LoginViewImpl {
     fn draw(
         &self,
-        f: &mut Frame<CrosstermBackend<Stdout>>,
+        f: &mut Frame,
         rect: Rect,
         state: State,
     ) -> anyhow::Result<()> {
@@ -66,6 +66,6 @@ module! {
     }
 }
 
-pub fn build_view_app_module() -> Arc<ViewLoginModule> {
+pub fn build_view_login_module() -> Arc<ViewLoginModule> {
     Arc::new(ViewLoginModule::builder().build())
 }

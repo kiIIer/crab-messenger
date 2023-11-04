@@ -42,7 +42,7 @@ impl Store for StoreImpl {
         thread::spawn(move || {
             while let Ok(action) = dispatch_rc.recv() {
                 let reduce_result =
-                    app_reducer.reduce(action, state.clone(), dispatch_tx.clone(), handle.clone());
+                    app_reducer.reduce(&action, &state.clone(), dispatch_tx.clone(), handle.clone());
 
                 if let ReduceResult::Consumed(new_state) = reduce_result {
                     state = new_state.clone();

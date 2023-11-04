@@ -21,8 +21,8 @@ pub struct LoginReducerImpl {
 impl Reducer for LoginReducerImpl {
     fn reduce(
         &self,
-        action: Action,
-        state: State,
+        action: &Action,
+        state: &State,
         dispatch_tx: Sender<Action>,
         handle: Handle,
     ) -> ReduceResult {
@@ -45,9 +45,11 @@ impl Reducer for LoginReducerImpl {
                 let mut new_state = state.clone();
                 new_state.code = Some(params.user_code.clone());
                 new_state.link = Some(params.verification_uri.clone());
+
+                let my_params = params.clone();
                 handle.spawn(async move {
                     let result = auth
-                        .poll_access_token(&params.device_code, params.interval)
+                        .poll_access_token(&my_params.device_code, my_params.interval)
                         .await;
                     if let Ok(poll_response) = result {
                         tx.send(Action::LoginSuccess(poll_response))
@@ -67,7 +69,7 @@ impl Reducer for LoginReducerImpl {
                 let mut new_state = state.clone();
                 let refresh_token = auth_state.refresh_token.clone();
                 let expires_in = auth_state.expires_in;
-                new_state.auth_state = Some(auth_state);
+                new_state.auth_state = Some(auth_state.clone());
 
                 let tx = dispatch_tx.clone();
                 let auth = self.auth.clone();

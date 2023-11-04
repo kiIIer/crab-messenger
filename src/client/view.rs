@@ -10,7 +10,7 @@ pub mod app;
 pub trait View {
     fn draw(
         &self,
-        f: &mut Frame<CrosstermBackend<io::Stdout>>,
+        f: &mut Frame,
         rect: Rect,
         state: State,
     ) -> anyhow::Result<()>;

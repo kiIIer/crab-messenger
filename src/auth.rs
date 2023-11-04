@@ -29,7 +29,7 @@ pub struct AuthState {
     pub expires_in: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct StartFlowResponse {
     pub device_code: String,
     pub user_code: String,
