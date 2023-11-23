@@ -7,6 +7,7 @@ use std::sync::Arc;
 pub mod auth;
 pub mod client;
 pub mod messenger;
+pub mod server;
 
 module! {
     pub RootModule{

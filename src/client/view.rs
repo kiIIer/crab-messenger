@@ -8,10 +8,5 @@ use std::io;
 pub mod app;
 
 pub trait View {
-    fn draw(
-        &self,
-        f: &mut Frame,
-        rect: Rect,
-        state: State,
-    ) -> anyhow::Result<()>;
+    fn draw(&self, f: &mut Frame, rect: Rect, state: State) -> anyhow::Result<()>;
 }
