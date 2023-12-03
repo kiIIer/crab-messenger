@@ -1,4 +1,4 @@
-use crab_messenger::messenger::{messenger_client::MessengerClient, GetMessages, Message};
+use crab_messenger::utils::messenger::{messenger_client::MessengerClient, GetMessages, Message};
 use prost_types::Timestamp;
 use std::time::{SystemTime, UNIX_EPOCH};
 

@@ -1,0 +1,26 @@
+# Use the official Rust image as a builder stage to compile the server
+FROM rust:1.74 as builder
+
+# Create a working directory
+WORKDIR /usr/src/myapp
+
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
+
+# Copy your whole project into the Docker image
+COPY protos/ protos/
+COPY src/ src/
+COPY Cargo.toml diesel.toml build.rs .env ./
+
+# Build your project, specifying the binary to build using the --bin flag
+RUN cargo build --release --bin server
+
+# Use a minimal Debian image to run the server
+FROM rust:1.74
+
+# Copy the build artifact from the builder stage
+COPY --from=builder /usr/src/myapp/target/release/server /usr/local/bin/server
+COPY --from=builder /usr/src/myapp/.env . 
+
+# Set the default command to run the binary
+ENV RUST_BACKTRACE 1
+CMD ["/usr/local/bin/server"]

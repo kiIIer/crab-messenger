@@ -1,8 +1,8 @@
-use crate::messenger::messenger_server::MessengerServer;
 use crate::server::crab_messenger::{
     build_crab_messenger_module, CrabMessenger, CrabMessengerImpl, CrabMessengerModule,
     MessengerAdapter, ResponseStream,
 };
+use crate::utils::messenger::messenger_server::MessengerServer;
 use async_trait::async_trait;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tonic::transport::Server as TonicServer;
 
 mod crab_messenger;
-mod persistence;
+pub mod persistence;
 
 #[async_trait]
 pub trait Server: Interface {

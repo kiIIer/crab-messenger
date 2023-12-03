@@ -1,4 +1,4 @@
-use crate::auth::AuthState;
+use crate::utils::auth::AuthState;
 use crate::client::redux::state::tab::TabState;
 use std::sync::{Arc, RwLock};
 

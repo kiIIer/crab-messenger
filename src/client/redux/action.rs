@@ -1,4 +1,4 @@
-use crate::auth::{AuthState, StartFlowResponse};
+use crate::utils::auth::{AuthState, StartFlowResponse};
 use crate::client::redux::state::State;
 use crossterm::event::Event;
 

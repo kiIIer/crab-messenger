@@ -1,5 +1,5 @@
-use crate::auth::auth_error::AuthError;
-use crate::auth::auth_impl::AuthImpl;
+use crate::utils::auth::auth_error::AuthError;
+use crate::utils::auth::auth_impl::AuthImpl;
 use async_trait::async_trait;
 use serde::Deserialize;
 use shaku::{module, HasComponent, Interface};

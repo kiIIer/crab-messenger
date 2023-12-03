@@ -1,14 +1,24 @@
-use crate::messenger::Message as ProtoMessage;
-use diesel::{Queryable, Selectable};
+use crate::utils::messenger::Message as ProtoMessage;
+use diesel::{Insertable, Queryable, Selectable};
 use prost_types::Timestamp;
+use serde::{Deserialize, Serialize};
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Deserialize, Serialize, Insertable)]
 #[diesel(table_name = crate::server::persistence::schema::messages)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Message {
     pub id: i32,
     pub text: String,
     pub created_at: chrono::NaiveDateTime,
+    pub user_id: String,
+    pub chat_id: i32,
+}
+
+#[derive(Queryable, Selectable, Deserialize, Serialize, Insertable)]
+#[diesel(table_name = crate::server::persistence::schema::messages)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct InsertMessage {
+    pub text: String,
     pub user_id: String,
     pub chat_id: i32,
 }

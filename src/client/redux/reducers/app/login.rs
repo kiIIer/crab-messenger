@@ -1,5 +1,5 @@
-use crate::auth::AuthModule;
-use crate::auth::{build_auth_module, Auth};
+use crate::utils::auth::AuthModule;
+use crate::utils::auth::{build_auth_module, Auth};
 use crate::client::redux::action::Action::LoginSuccess;
 use crate::client::redux::action::{Action, ReduceResult};
 use crate::client::redux::reducers::Reducer;

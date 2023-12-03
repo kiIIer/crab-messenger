@@ -1,5 +1,5 @@
-use crate::auth::auth_error::AuthError;
-use crate::auth::{Auth, AuthState, StartFlowResponse};
+use crate::utils::auth::auth_error::AuthError;
+use crate::utils::auth::{Auth, AuthState, StartFlowResponse};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
