@@ -1,11 +1,5 @@
-use crate::server::persistence::message::{InsertMessage, Message};
-use crate::server::persistence::schema::messages;
-use crate::utils::db_connection_manager::{
-    build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
-};
-use crate::utils::rabbit_channel_manager::{
-    build_channel_manager_module, ChannelManager, ChannelManagerModule,
-};
+use std::sync::Arc;
+
 use amqprs::channel::{
     BasicPublishArguments, BasicRejectArguments, ExchangeDeclareArguments, ExchangeType,
 };
@@ -15,12 +9,15 @@ use amqprs::{
     BasicProperties, Deliver, FieldTable,
 };
 use async_trait::async_trait;
-use chrono::Utc;
 use diesel::prelude::*;
 use serde_json;
-use shaku::{module, Component, Interface};
-use std::sync::Arc;
+use shaku::Component;
 use tracing::{error, info};
+
+use crate::utils::db_connection_manager::DBConnectionManager;
+use crate::utils::persistence::message::{InsertMessage, Message};
+use crate::utils::persistence::schema::messages;
+use crate::utils::rabbit_declares::{declare_messages_exchange, MESSAGES_EXCHANGE};
 
 #[derive(Clone)]
 pub struct NewMessageConsumer {
@@ -59,61 +56,29 @@ impl AsyncConsumer for NewMessageConsumer {
                     Ok(message) => {
                         // Successfully inserted message
                         // You can use `message` here, which contains the inserted data including id and timestamp
-                        let exchange_name = "MessagesExchange";
-                        match channel
-                            .exchange_declare(
-                                ExchangeDeclareArguments::of_type(
-                                    exchange_name,
-                                    ExchangeType::Fanout,
-                                )
-                                .passive(false)
-                                .durable(false)
-                                .auto_delete(false)
-                                .internal(false)
-                                .no_wait(false)
-                                .arguments(FieldTable::default())
-                                .finish(),
-                            )
-                            .await
-                        {
-                            Ok(_) => {
-                                info!("Exchange declared successfully");
-                                match serde_json::to_string(&message) {
-                                    Ok(serialized_message) => {
-                                        // Publish the message
-                                        match channel
-                                            .basic_publish(
-                                                BasicProperties::default(),
-                                                serialized_message.into_bytes(),
-                                                BasicPublishArguments::new(
-                                                    exchange_name,
-                                                    &format!("{}", message.chat_id),
-                                                )
-                                                .mandatory(false)
-                                                .immediate(false)
-                                                .finish(),
-                                            )
-                                            .await
-                                        {
-                                            Ok(_) => info!("Message published successfully"),
-                                            Err(e) => error!("Failed to publish message: {:?}", e),
-                                        }
-                                    }
-                                    Err(e) => error!("Failed to serialize message: {:?}", e),
-                                }
-                            }
-                            Err(e) => {
-                                error!("Failed to declare exchange: {:?}", e);
-                                if let Err(e) = channel
-                                    .basic_reject(BasicRejectArguments::new(
-                                        deliver.delivery_tag(),
-                                        false,
-                                    ))
+                        info!("Exchange declared successfully");
+                        match serde_json::to_string(&message) {
+                            Ok(serialized_message) => {
+                                // Publish the message
+                                match channel
+                                    .basic_publish(
+                                        BasicProperties::default(),
+                                        serialized_message.into_bytes(),
+                                        BasicPublishArguments::new(
+                                            MESSAGES_EXCHANGE,
+                                            &format!("{}", message.chat_id),
+                                        )
+                                        .mandatory(false)
+                                        .immediate(false)
+                                        .finish(),
+                                    )
                                     .await
                                 {
-                                    error!("Error acknowledging message: {:?}", e);
+                                    Ok(_) => info!("Message published successfully"),
+                                    Err(e) => error!("Failed to publish message: {:?}", e),
                                 }
                             }
+                            Err(e) => error!("Failed to serialize message: {:?}", e),
                         }
 
                         // Serialize the message to a JSON string

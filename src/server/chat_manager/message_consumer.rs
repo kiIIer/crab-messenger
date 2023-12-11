@@ -1,4 +1,4 @@
-use crate::server::persistence::message::Message as DBMessage;
+use crate::utils::persistence::message::Message as DBMessage;
 use crate::utils::messenger::Message as GMessage;
 use amqprs::channel::{BasicAckArguments, Channel};
 use amqprs::consumer::AsyncConsumer;

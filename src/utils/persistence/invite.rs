@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 
 #[derive(Queryable, Selectable)]
-#[diesel(table_name = crate::server::persistence::schema::invites)]
+#[diesel(table_name = crate::utils::persistence::schema::invites)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Invite {
     pub id: i32,

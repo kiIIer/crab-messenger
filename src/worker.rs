@@ -1,20 +1,21 @@
+use std::sync::Arc;
+
+use amqprs::channel::{
+    BasicConsumeArguments, QueueBindArguments, QueueDeclareArguments,
+};
+use amqprs::consumer::AsyncConsumer;
+use async_trait::async_trait;
+use shaku::{Component, Interface, module};
+use tokio::signal;
+
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
+use crate::utils::rabbit_declares::{declare_new_message_exchange, NEW_MESSAGE_EXCHANGE};
 use crate::worker::new_message_consumer::NewMessageConsumer;
-use amqprs::channel::{
-    BasicConsumeArguments, ExchangeDeclareArguments, QueueBindArguments, QueueDeclareArguments,
-};
-use amqprs::consumer::AsyncConsumer;
-use async_trait::async_trait;
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::PgConnection;
-use shaku::{module, Component, Interface};
-use std::sync::Arc;
-use tokio::{signal, task};
 
 mod new_message_consumer;
 
@@ -39,12 +40,7 @@ impl Worker for WorkerImpl {
         let channel = self.channel_manager.get_channel().await?;
 
         // Declare the exchange
-        channel
-            .exchange_declare(ExchangeDeclareArguments::new(
-                "NewMessageExchange",
-                "direct",
-            ))
-            .await?;
+        declare_new_message_exchange(&channel).await?;
 
         // Declare a durable queue
         let queue_name = "new_message_queue";
@@ -56,7 +52,7 @@ impl Worker for WorkerImpl {
         channel
             .queue_bind(QueueBindArguments::new(
                 queue_name,
-                "NewMessageExchange",
+                NEW_MESSAGE_EXCHANGE,
                 "",
             ))
             .await?;

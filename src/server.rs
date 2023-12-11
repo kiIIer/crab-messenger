@@ -1,19 +1,15 @@
 use crate::server::crab_messenger::{
-    build_crab_messenger_module, CrabMessenger, CrabMessengerImpl, CrabMessengerModule,
+    build_crab_messenger_module, CrabMessenger, CrabMessengerModule,
     MessengerAdapter, ResponseStream,
 };
 use crate::utils::messenger::messenger_server::MessengerServer;
 use async_trait::async_trait;
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::PgConnection;
-use dotenv::dotenv;
-use shaku::{module, Component, Interface};
-use std::env;
+use shaku::{Component, Interface, module};
 use std::sync::Arc;
 use tonic::transport::Server as TonicServer;
 
 mod crab_messenger;
-pub mod persistence;
+mod chat_manager;
 
 #[async_trait]
 pub trait Server: Interface {

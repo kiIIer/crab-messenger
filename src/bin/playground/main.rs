@@ -1,6 +1,6 @@
 use chrono::Utc;
 use crab_messenger::client::{build_client_module, Client};
-use crab_messenger::server::persistence::message::{InsertMessage, Message};
+use crab_messenger::utils::persistence::message::{InsertMessage, Message};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
 use crossterm::{
     execute,
