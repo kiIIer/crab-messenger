@@ -3,7 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use shaku::{module, Component, Interface};
 use tonic::transport::Server as TonicServer;
-use tracing::info;
+use tonic::{Request, Status};
+use tracing::{info, instrument};
 
 use crate::server::crab_messenger::{
     build_crab_messenger_module, CrabMessenger, CrabMessengerModule, MessengerAdapter,
@@ -11,8 +12,8 @@ use crate::server::crab_messenger::{
 };
 use crate::utils::messenger::messenger_server::MessengerServer;
 
-mod chat_manager;
 mod crab_messenger;
+mod auth_interceptor;
 
 #[async_trait]
 pub trait Server: Interface {
@@ -23,7 +24,7 @@ pub trait Server: Interface {
 #[shaku(interface = Server)]
 pub struct ServerImpl {
     #[shaku(inject)]
-    crab_messenger: Arc<dyn CrabMessenger<ChatStream = ResponseStream>>,
+    crab_messenger: Arc<dyn CrabMessenger<chatStream = ResponseStream>>,
 }
 
 #[async_trait]
@@ -36,7 +37,7 @@ impl Server for ServerImpl {
 
         let messenger_adapter = MessengerAdapter::new(self.crab_messenger.clone());
 
-        let messenger = MessengerServer::new(messenger_adapter);
+        let messenger = MessengerServer::with_interceptor(messenger_adapter, intercept);
 
         TonicServer::builder()
             .add_service(messenger)
@@ -47,12 +48,19 @@ impl Server for ServerImpl {
     }
 }
 
+#[instrument(skip(req))]
+fn intercept(mut req: Request<()>) -> Result<Request<()>, Status> {
+    info!("Intercepting: {:?}", req);
+
+    Ok(req)
+}
+
 module! {
     pub ServerModule {
         components = [ServerImpl],
         providers = [],
         use CrabMessengerModule {
-            components = [dyn CrabMessenger<ChatStream = ResponseStream>],
+            components = [dyn CrabMessenger<chatStream = ResponseStream>],
             providers = [],
         }
     }

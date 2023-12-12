@@ -4,16 +4,14 @@ use amqprs::channel::{BasicConsumeArguments, Channel, QueueBindArguments, QueueD
 use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
-use futures_core::Stream;
-use rand::Rng;
 use shaku::{module, Component, Interface};
 use tokio::sync::mpsc;
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{debug, error, info};
 
-use crate::server::chat_manager::message_consumer::RabbitConsumer;
-use crate::server::chat_manager::message_stream_handler::{
+use crate::server::crab_messenger::message_manager::message_consumer::RabbitConsumer;
+use crate::server::crab_messenger::message_manager::message_stream_handler::{
     build_message_stream_handler_module, MessageStreamHandler, MessageStreamHandlerModule,
 };
 use crate::server::crab_messenger::ResponseStream;
@@ -22,7 +20,7 @@ use crate::utils::db_connection_manager::{
 };
 use crate::utils::generate_random_string;
 use crate::utils::messenger::{GetMessages, Messages, SendMessage};
-use crate::utils::persistence::message::{InsertMessage, Message};
+use crate::utils::persistence::message::Message;
 use crate::utils::persistence::schema::messages;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
@@ -33,12 +31,12 @@ mod message_consumer;
 mod message_stream_handler;
 
 #[async_trait]
-pub trait ChatManager: Interface {
-    type ChatStream;
+pub trait MessageManager: Interface {
+    type chatStream;
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
-    ) -> Result<Response<Self::ChatStream>, Status>;
+    ) -> Result<Response<Self::chatStream>, Status>;
     async fn get_messages(
         &self,
         request: Request<GetMessages>,
@@ -46,8 +44,8 @@ pub trait ChatManager: Interface {
 }
 
 #[derive(Component)]
-#[shaku(interface = ChatManager<ChatStream = ResponseStream>)]
-pub struct ChatManagerImpl {
+#[shaku(interface = MessageManager<chatStream = ResponseStream>)]
+pub struct MessageManagerImpl {
     #[shaku(inject)]
     db_connection_manager: Arc<dyn DBConnectionManager>,
     #[shaku(inject)]
@@ -56,7 +54,7 @@ pub struct ChatManagerImpl {
     message_stream_handler: Arc<dyn MessageStreamHandler>,
 }
 
-impl ChatManagerImpl {
+impl MessageManagerImpl {
     async fn setup_chat_channel(&self) -> Result<Channel, Status> {
         self.channel_manager.get_channel().await.map_err(|e| {
             error!("Failed to get channel: {:?}", e);
@@ -121,14 +119,14 @@ impl ChatManagerImpl {
 }
 
 #[async_trait]
-impl ChatManager for ChatManagerImpl {
-    type ChatStream = ResponseStream;
+impl MessageManager for MessageManagerImpl {
+    type chatStream = ResponseStream;
 
     #[tracing::instrument(skip(self, request))]
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
-    ) -> Result<Response<Self::ChatStream>, Status> {
+    ) -> Result<Response<Self::chatStream>, Status> {
         info!("Starting chat");
         let (tx, rx) = mpsc::channel(16);
         let channel = self.setup_chat_channel().await?;
@@ -174,17 +172,21 @@ impl ChatManager for ChatManagerImpl {
             created_before_filter.seconds,
             created_before_filter.nanos as u32,
         )
-            .unwrap();
-        debug!("Fetching messages for chat_id: {} created before: {:?}", chat_id_filter, created_before_naive);
+        .unwrap();
+        debug!(
+            "Fetching messages for chat_id: {} created before: {:?}",
+            chat_id_filter, created_before_naive
+        );
 
         let message_results = match messages::table
             .filter(messages::chat_id.eq(chat_id_filter))
             .filter(messages::created_at.lt(created_before_naive))
-            .load::<Message>(&mut connection) {
+            .load::<Message>(&mut connection)
+        {
             Ok(results) => {
                 debug!("Successfully queried messages from database");
                 results
-            },
+            }
             Err(e) => {
                 error!("Failed to query messages: {}", e);
                 return Err(Status::internal(format!("Failed to query messages: {}", e)));
@@ -204,8 +206,8 @@ impl ChatManager for ChatManagerImpl {
 }
 
 module! {
-    pub ChatManagerModule {
-        components = [ChatManagerImpl],
+    pub MessageManagerModule {
+        components = [MessageManagerImpl],
         providers = [],
          use DBConnectionManagerModule{
             components = [dyn DBConnectionManager],
@@ -218,13 +220,13 @@ module! {
         use MessageStreamHandlerModule{
             components = [dyn MessageStreamHandler],
             providers = [],
-        }
+        },
     }
 }
 
-pub fn build_chat_manager_module() -> Arc<ChatManagerModule> {
+pub fn build_message_manager_module() -> Arc<MessageManagerModule> {
     Arc::new(
-        ChatManagerModule::builder(
+        MessageManagerModule::builder(
             build_db_connection_manager_module(),
             build_channel_manager_module(),
             build_message_stream_handler_module(),

@@ -1,26 +1,20 @@
-use crab_messenger::utils::messenger::{messenger_client::MessengerClient, GetMessages, Message};
-use prost_types::Timestamp;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+
+use shaku::HasComponent;
+use tracing_subscriber::{fmt, EnvFilter};
+
+use crab_messenger::client::{build_client_module, Client};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = MessengerClient::connect("http://[::1]:50051").await?;
+async fn main() -> anyhow::Result<()> {
+    let subscriber = fmt::Subscriber::builder()
+        .with_env_filter(EnvFilter::from_default_env())
+        .finish();
 
-    let now = SystemTime::now();
-    let since_the_epoch = now.duration_since(UNIX_EPOCH)?;
-    let timestamp = Timestamp {
-        seconds: since_the_epoch.as_secs() as i64,
-        nanos: since_the_epoch.subsec_nanos() as i32,
-    };
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let request = tonic::Request::new(GetMessages {
-        chat_id: 1,
-        created_before: Some(timestamp),
-    });
-
-    let response = client.get_messages(request).await?;
-
-    println!("RESPONSE={:?}", response);
-
+    let module = build_client_module();
+    let client: Arc<dyn Client> = module.resolve();
+    client.run_client()?;
     Ok(())
 }

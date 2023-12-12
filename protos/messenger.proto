@@ -4,8 +4,10 @@ package messenger;
 import "google/protobuf/timestamp.proto";
 
 service Messenger{
-  rpc Chat(stream SendMessage) returns (stream Message);
+  rpc chat(stream SendMessage) returns (stream Message);
   rpc getMessages(GetMessages) returns (Messages);
+  rpc getUser(GetUser) returns (User);
+  rpc getUserChats(GetMyChats) returns (Chat);
 }
 
 message SendMessage {
@@ -29,3 +31,20 @@ message GetMessages{
 message Messages{
   repeated Message messages = 1;
 }
+
+message GetUser{
+  optional string user_id = 1;
+  optional string email = 2;
+}
+
+message User{
+  string id = 1;
+  string email = 2;
+}
+
+message Chat{
+  int32 id = 1;
+  string name = 2;
+}
+
+message GetMyChats{}

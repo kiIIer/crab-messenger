@@ -55,3 +55,9 @@ name = "bunny-publish"
 
 [[bin]]
 name = "bunny-recieve"
+
+[[bin]]
+name = "test-users"
+
+[[bin]]
+name = "test-get-messages"
