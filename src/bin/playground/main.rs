@@ -31,8 +31,8 @@ use std::time::Duration;
 use crab_messenger::utils::messenger::{messenger_client::MessengerClient, SendMessage};
 use futures::stream::StreamExt;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::Request;
-use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,6 +62,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = String::new();
     while let Ok(_) = std::io::stdin().read_line(&mut input) {
         let trimmed = input.trim();
+        if trimmed == "exit" {
+            // User types "exit" to gracefully close the client
+            break;
+        }
         if trimmed.is_empty() {
             continue;
         }

@@ -1,25 +1,29 @@
-use crate::utils::persistence::message::Message as DBMessage;
-use crate::utils::messenger::Message as GMessage;
-use amqprs::channel::{BasicAckArguments, Channel};
+use amqprs::channel::{BasicAckArguments, Channel, QueueDeleteArguments};
 use amqprs::consumer::AsyncConsumer;
 use amqprs::{BasicProperties, Deliver};
 use async_trait::async_trait;
-use prost_types::Timestamp;
+use scopeguard::defer;
 use tokio::sync::mpsc;
 use tonic::Status;
+use tracing::{debug, error, info};
+
+use crate::utils::messenger::Message as GMessage;
+use crate::utils::persistence::message::Message as DBMessage;
 
 pub struct RabbitConsumer {
     tx: mpsc::Sender<Result<GMessage, Status>>,
+    queue_name: String,
 }
 
 impl RabbitConsumer {
-    pub fn new(tx: mpsc::Sender<Result<GMessage, Status>>) -> Self {
-        Self { tx }
+    pub fn new(tx: mpsc::Sender<Result<GMessage, Status>>, queue_name: String) -> Self {
+        Self { tx, queue_name }
     }
 }
 
 #[async_trait]
 impl AsyncConsumer for RabbitConsumer {
+    #[tracing::instrument(skip(self, channel, content))]
     async fn consume(
         &mut self,
         channel: &Channel,
@@ -27,26 +31,42 @@ impl AsyncConsumer for RabbitConsumer {
         _: BasicProperties,
         content: Vec<u8>,
     ) {
-        // Deserialize the DB message
-        let db_message: DBMessage = serde_json::from_slice(&content).unwrap(); // Handle errors properly
-
-        // Convert to gRPC message
-        let grpc_message = GMessage {
-            id: db_message.id,
-            user_id: db_message.user_id,
-            chat_id: db_message.chat_id,
-            text: db_message.text,
-            created_at: Some(Timestamp {
-                seconds: db_message.created_at.timestamp(),
-                nanos: db_message.created_at.timestamp_subsec_nanos() as i32,
-            }),
+        debug!("Sending message to user");
+        let db_message: DBMessage = match serde_json::from_slice(&content) {
+            Ok(msg) => msg,
+            Err(e) => {
+                error!("Failed to deserialize message: {:?}", e);
+                return;
+            }
         };
 
-        // Send to client
-        let _ = self.tx.send(Ok(grpc_message)).await;
-        channel
+        let grpc_message = db_message.into();
+
+        let send_result = self.tx.send(Ok(grpc_message)).await;
+        debug!("Send result: {:?}", send_result);
+
+        // defer! {
+        //     debug!("Client likely disconnected, deleting queue.");
+        //     if let Err(e) = channel
+        //         .queue_delete(
+        //             QueueDeleteArguments::new(&self.queue_name)
+        //                 .if_empty(false)
+        //                 .if_unused(false)
+        //                 .finish(),
+        //         )
+        //         .await
+        //     {
+        //         error!("Failed to delete queue: {:?}", e);
+        //     }
+        //     info!("Queue deleted");
+        //     return;
+        // }
+
+        if let Err(e) = channel
             .basic_ack(BasicAckArguments::new(deliver.delivery_tag(), false))
             .await
-            .unwrap();
+        {
+            error!("Failed to acknowledge message: {:?}", e);
+        }
     }
 }

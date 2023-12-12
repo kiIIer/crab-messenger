@@ -1,15 +1,18 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use shaku::{module, Component, Interface};
+use tonic::transport::Server as TonicServer;
+use tracing::info;
+
 use crate::server::crab_messenger::{
-    build_crab_messenger_module, CrabMessenger, CrabMessengerModule,
-    MessengerAdapter, ResponseStream,
+    build_crab_messenger_module, CrabMessenger, CrabMessengerModule, MessengerAdapter,
+    ResponseStream,
 };
 use crate::utils::messenger::messenger_server::MessengerServer;
-use async_trait::async_trait;
-use shaku::{Component, Interface, module};
-use std::sync::Arc;
-use tonic::transport::Server as TonicServer;
 
-mod crab_messenger;
 mod chat_manager;
+mod crab_messenger;
 
 #[async_trait]
 pub trait Server: Interface {
@@ -25,7 +28,10 @@ pub struct ServerImpl {
 
 #[async_trait]
 impl Server for ServerImpl {
+    #[tracing::instrument(skip(self), err)]
     async fn run_server(self: Arc<Self>) -> anyhow::Result<()> {
+        info!("Starting server");
+
         let addr = "[::1]:50051".parse().unwrap();
 
         let messenger_adapter = MessengerAdapter::new(self.crab_messenger.clone());

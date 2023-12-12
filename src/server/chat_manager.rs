@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use amqprs::channel::{
-    BasicConsumeArguments, BasicPublishArguments, QueueBindArguments, QueueDeclareArguments,
-};
-use amqprs::{BasicProperties, DELIVERY_MODE_PERSISTENT};
+use amqprs::channel::{BasicConsumeArguments, Channel, QueueBindArguments, QueueDeclareArguments};
 use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
@@ -11,27 +8,29 @@ use futures_core::Stream;
 use rand::Rng;
 use shaku::{module, Component, Interface};
 use tokio::sync::mpsc;
-use tonic::codegen::tokio_stream;
+use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
+use tracing::{debug, error, info};
 
+use crate::server::chat_manager::message_consumer::RabbitConsumer;
+use crate::server::chat_manager::message_stream_handler::{
+    build_message_stream_handler_module, MessageStreamHandler, MessageStreamHandlerModule,
+};
 use crate::server::crab_messenger::ResponseStream;
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
 use crate::utils::generate_random_string;
-use crate::utils::messenger::messenger_server::Messenger;
 use crate::utils::messenger::{GetMessages, Messages, SendMessage};
 use crate::utils::persistence::message::{InsertMessage, Message};
 use crate::utils::persistence::schema::messages;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
-use crate::utils::rabbit_declares::{
-    declare_messages_exchange, declare_new_message_exchange, MESSAGES_EXCHANGE,
-    NEW_MESSAGE_EXCHANGE,
-};
+use crate::utils::rabbit_declares::{declare_new_message_exchange, MESSAGES_EXCHANGE};
 
 mod message_consumer;
+mod message_stream_handler;
 
 #[async_trait]
 pub trait ChatManager: Interface {
@@ -53,134 +52,153 @@ pub struct ChatManagerImpl {
     db_connection_manager: Arc<dyn DBConnectionManager>,
     #[shaku(inject)]
     channel_manager: Arc<dyn ChannelManager>,
+    #[shaku(inject)]
+    message_stream_handler: Arc<dyn MessageStreamHandler>,
+}
+
+impl ChatManagerImpl {
+    async fn setup_chat_channel(&self) -> Result<Channel, Status> {
+        self.channel_manager.get_channel().await.map_err(|e| {
+            error!("Failed to get channel: {:?}", e);
+            Status::internal("Failed to get channel")
+        })
+    }
+
+    async fn setup_queue(
+        &self,
+        channel: &Channel,
+        queue_name: &str,
+        routing_key: &str,
+    ) -> Result<(), Status> {
+        declare_new_message_exchange(channel).await.map_err(|e| {
+            error!("Failed to declare exchange: {:?}", e);
+            Status::internal("Failed to declare exchange")
+        })?;
+
+        channel
+            .queue_declare(
+                QueueDeclareArguments::new(queue_name)
+                    .auto_delete(true)
+                    .durable(false)
+                    .finish(),
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to declare queue: {:?}", e);
+                Status::internal("Failed to declare queue")
+            })?;
+
+        channel
+            .queue_bind(
+                QueueBindArguments::new(queue_name, MESSAGES_EXCHANGE, routing_key).finish(),
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to bind queue: {:?}", e);
+                Status::internal("Failed to bind queue")
+            })?;
+
+        Ok(())
+    }
+
+    async fn consume_messages(
+        &self,
+        channel: &Channel,
+        consumer: RabbitConsumer,
+        queue_name: &str,
+    ) -> Result<String, Status> {
+        channel
+            .basic_consume(
+                consumer,
+                BasicConsumeArguments::new(queue_name, "").finish(),
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to consume: {:?}", e);
+                Status::internal("Failed to consume messages")
+            })
+    }
 }
 
 #[async_trait]
 impl ChatManager for ChatManagerImpl {
     type ChatStream = ResponseStream;
 
+    #[tracing::instrument(skip(self, request))]
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
     ) -> Result<Response<Self::ChatStream>, Status> {
-        println!("Connecting client");
+        info!("Starting chat");
         let (tx, rx) = mpsc::channel(16);
-        let channel = self.channel_manager.get_channel().await.unwrap();
+        let channel = self.setup_chat_channel().await?;
 
         let queue_name = generate_random_string(10);
-        let routing_key = "1";
+        let routing_key = "1"; // Adjust the routing key logic as needed
 
-        declare_new_message_exchange(&channel)
-            .await
-            .expect("couldn't create exchange new messages");
+        self.setup_queue(&channel, &queue_name, routing_key).await?;
 
-        declare_messages_exchange(&channel)
-            .await
-            .expect("Could 't create exchange for just messages");
+        let consumer = RabbitConsumer::new(tx.clone(), queue_name.clone());
+        self.consume_messages(&channel, consumer, &queue_name)
+            .await?;
 
-        channel
-            .queue_declare(QueueDeclareArguments::new(&queue_name))
-            .await
-            .expect("Couldn't declare queue for messages");
-        channel
-            .queue_bind(QueueBindArguments::new(
-                &queue_name,
-                MESSAGES_EXCHANGE,
-                routing_key,
-            ))
-            .await
-            .expect("Couldn't bind queue to exchange");
-
-        let consumer = message_consumer::RabbitConsumer::new(tx.clone());
-        channel
-            .basic_consume(consumer, BasicConsumeArguments::new(&queue_name, ""))
-            .await
-            .unwrap();
-
+        let message_stream_handler = self.message_stream_handler.clone();
         tokio::spawn(async move {
-            let mut stream = request.into_inner();
-
-            while let Ok(send_msg_result) = stream.message().await {
-                println!("We got a message!");
-                match send_msg_result {
-                    Some(send_msg) => {
-                        // Convert `SendMessage` to `InsertMessage`
-                        let insert_message = InsertMessage {
-                            user_id: "google-oauth2|108706181521622783833".to_string(),
-                            text: send_msg.text,
-                            chat_id: send_msg.chat_id,
-                        };
-
-                        // Serialize `InsertMessage` to JSON
-                        match serde_json::to_string(&insert_message) {
-                            Ok(serialized_message) => {
-                                // Publish to RabbitMQ
-                                let exchange_name = NEW_MESSAGE_EXCHANGE;
-                                let basic_properties = BasicProperties::default()
-                                    .with_delivery_mode(DELIVERY_MODE_PERSISTENT)
-                                    .finish(); // Persistent message
-
-                                match channel
-                                    .basic_publish(
-                                        basic_properties,
-                                        serialized_message.into_bytes(),
-                                        BasicPublishArguments::new(exchange_name, "")
-                                            .mandatory(false)
-                                            .immediate(false)
-                                            .finish(),
-                                    )
-                                    .await
-                                {
-                                    Ok(_) => println!("Message published to NewMessageExchange"),
-                                    Err(e) => eprintln!("Failed to publish message: {:?}", e),
-                                }
-                            }
-                            Err(e) => eprintln!("Failed to serialize message: {:?}", e),
-                        }
-                    }
-                    None => {
-                        eprintln!("Stream ended or error in receiving message from stream");
-                        break;
-                    }
-                }
+            if let Err(e) = message_stream_handler
+                .handle_stream(request.into_inner(), &channel)
+                .await
+            {
+                error!("Error handling stream: {:?}", e);
             }
         });
 
-        Ok(Response::new(Box::pin(
-            tokio_stream::wrappers::ReceiverStream::new(rx),
-        )))
+        Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
     }
 
     async fn get_messages(
         &self,
         request: Request<GetMessages>,
     ) -> Result<Response<Messages>, Status> {
+        info!("Received request to get messages");
+
         let mut connection = self.db_connection_manager.get_connection().map_err(|e| {
+            error!("Failed to get DB connection from pool: {}", e);
             Status::internal(format!("Failed to get DB connection from pool: {}", e))
         })?;
 
         let get_messages_req = request.into_inner();
         let chat_id_filter = get_messages_req.chat_id;
-        let created_before_filter = get_messages_req.created_before.unwrap(); // assuming it's present
 
+        let created_before_filter = get_messages_req.created_before.unwrap(); // assuming it's present
         let created_before_naive = chrono::NaiveDateTime::from_timestamp_opt(
             created_before_filter.seconds,
             created_before_filter.nanos as u32,
         )
-        .unwrap();
+            .unwrap();
+        debug!("Fetching messages for chat_id: {} created before: {:?}", chat_id_filter, created_before_naive);
 
-        let message_results = messages::table
+        let message_results = match messages::table
             .filter(messages::chat_id.eq(chat_id_filter))
             .filter(messages::created_at.lt(created_before_naive))
-            .load::<Message>(&mut connection)
-            .map_err(|e| Status::internal(format!("Failed to query messages: {}", e)))?;
+            .load::<Message>(&mut connection) {
+            Ok(results) => {
+                debug!("Successfully queried messages from database");
+                results
+            },
+            Err(e) => {
+                error!("Failed to query messages: {}", e);
+                return Err(Status::internal(format!("Failed to query messages: {}", e)));
+            }
+        };
 
         let proto_messages: Vec<_> = message_results.into_iter().map(Into::into).collect();
+        debug!("Total messages fetched: {}", proto_messages.len());
 
         let response = Messages {
             messages: proto_messages,
         };
 
+        info!("Successfully processed get_messages request");
         Ok(Response::new(response))
     }
 }
@@ -197,6 +215,10 @@ module! {
             components = [dyn ChannelManager],
             providers = [],
         },
+        use MessageStreamHandlerModule{
+            components = [dyn MessageStreamHandler],
+            providers = [],
+        }
     }
 }
 
@@ -205,6 +227,7 @@ pub fn build_chat_manager_module() -> Arc<ChatManagerModule> {
         ChatManagerModule::builder(
             build_db_connection_manager_module(),
             build_channel_manager_module(),
+            build_message_stream_handler_module(),
         )
         .build(),
     )

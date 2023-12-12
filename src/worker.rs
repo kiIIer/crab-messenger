@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use amqprs::channel::{
-    BasicConsumeArguments, QueueBindArguments, QueueDeclareArguments,
-};
-use amqprs::consumer::AsyncConsumer;
+use amqprs::channel::{BasicConsumeArguments, QueueBindArguments, QueueDeclareArguments};
 use async_trait::async_trait;
-use shaku::{Component, Interface, module};
+use shaku::{module, Component, Interface};
 use tokio::signal;
+use tracing::{error, info, Instrument};
 
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
@@ -14,7 +12,10 @@ use crate::utils::db_connection_manager::{
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
-use crate::utils::rabbit_declares::{declare_new_message_exchange, NEW_MESSAGE_EXCHANGE};
+use crate::utils::rabbit_declares::{
+    declare_messages_exchange, declare_new_message_exchange, setup_error_handling,
+    NEW_MESSAGE_EXCHANGE,
+};
 use crate::worker::new_message_consumer::NewMessageConsumer;
 
 mod new_message_consumer;
@@ -36,33 +37,63 @@ pub struct WorkerImpl {
 
 #[async_trait]
 impl Worker for WorkerImpl {
+    #[tracing::instrument(skip(self), err)]
     async fn run_worker(self: Arc<Self>) -> anyhow::Result<()> {
-        let channel = self.channel_manager.get_channel().await?;
+        info!("Starting worker");
 
-        // Declare the exchange
-        declare_new_message_exchange(&channel).await?;
+        let channel = self.channel_manager.get_channel().await.map_err(|e| {
+            error!("Failed to get channel: {:?}", e);
+            e
+        })?;
 
-        // Declare a durable queue
+        declare_new_message_exchange(&channel).await.map_err(|e| {
+            error!("Failed to declare exchange: {:?}", e);
+            e
+        })?;
+
+        declare_messages_exchange(&channel).await.map_err(|e| {
+            error!("Failed to declare exchange: {:?}", e);
+            e
+        })?;
+
+        setup_error_handling(&channel).await.map_err(|e| {
+            error!("Failed to setup error handling: {:?}", e);
+            e
+        })?;
+
         let queue_name = "new_message_queue";
         channel
             .queue_declare(QueueDeclareArguments::durable_client_named(queue_name))
-            .await?;
+            .await
+            .map_err(|e| {
+                error!("Failed to declare queue: {:?}", e);
+                e
+            })?;
 
-        // Bind the queue to the exchange
         channel
             .queue_bind(QueueBindArguments::new(
                 queue_name,
                 NEW_MESSAGE_EXCHANGE,
                 "",
             ))
-            .await?;
+            .await
+            .map_err(|e| {
+                error!("Failed to bind queue: {:?}", e);
+                e
+            })?;
 
         let consumer = NewMessageConsumer::new(self.connection_manager.clone());
         let args = BasicConsumeArguments::new(queue_name, "worker");
 
-        channel.basic_consume(consumer, args).await?;
+        channel.basic_consume(consumer, args).await.map_err(|e| {
+            error!("Failed to consume: {:?}", e);
+            e
+        })?;
 
-        signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+        signal::ctrl_c().await.map_err(|e| {
+            error!("Failed to wait for ctrl-c: {:?}", e);
+            e
+        })?;
 
         Ok(())
     }
