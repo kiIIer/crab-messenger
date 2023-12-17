@@ -8,6 +8,8 @@ use std::sync::Arc;
 pub mod auth_error;
 pub mod auth_impl;
 
+pub mod token;
+
 #[async_trait]
 pub trait Auth: Interface {
     async fn start_device_flow(&self) -> Result<StartFlowResponse, AuthError>;

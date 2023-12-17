@@ -2,10 +2,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use diesel::prelude::*;
 use futures_core::Stream;
 use shaku::{module, Component, Interface};
 use tonic::{Request, Response, Status, Streaming};
 
+use crate::server::crab_messenger::chat_manager::{
+    build_chat_manager_module, ChatManager, ChatManagerModule,
+};
 use crate::server::crab_messenger::message_manager::{
     build_message_manager_module, MessageManager, MessageManagerModule,
 };
@@ -14,12 +18,13 @@ use crate::server::crab_messenger::user_manager::{
 };
 use crate::utils::messenger::messenger_server::Messenger;
 use crate::utils::messenger::{
-    Chat, GetMessages, GetMyChats, Message as MMessage, Messages, SendMessage,
+    GetMessages, GetMyChats, Message as MMessage, Messages, MyChats, SendMessage,
 };
 use crate::utils::messenger::{GetUser, User};
 
+mod chat_manager;
 mod message_manager;
-mod user_manager;
+pub mod user_manager;
 
 pub trait CrabMessenger: Interface + Messenger {}
 
@@ -33,6 +38,9 @@ pub struct CrabMessengerImpl {
 
     #[shaku(inject)]
     user_manager: Arc<dyn UserManager>,
+
+    #[shaku(inject)]
+    chat_manager: Arc<dyn ChatManager>,
 }
 
 impl CrabMessenger for CrabMessengerImpl {}
@@ -59,8 +67,11 @@ impl Messenger for CrabMessengerImpl {
         self.user_manager.get_user(request).await
     }
 
-    async fn get_user_chats(&self, request: Request<GetMyChats>) -> Result<Response<Chat>, Status> {
-        todo!()
+    async fn get_user_chats(
+        &self,
+        request: Request<GetMyChats>,
+    ) -> Result<Response<MyChats>, Status> {
+        self.chat_manager.get_user_chats(request).await
     }
 }
 
@@ -96,8 +107,11 @@ impl Messenger for MessengerAdapter {
         self.messenger.get_user(request).await
     }
 
-    async fn get_user_chats(&self, request: Request<GetMyChats>) -> Result<Response<Chat>, Status> {
-        todo!()
+    async fn get_user_chats(
+        &self,
+        request: Request<GetMyChats>,
+    ) -> Result<Response<MyChats>, Status> {
+        self.messenger.get_user_chats(request).await
     }
 }
 
@@ -113,12 +127,19 @@ module! {
             components = [dyn UserManager],
             providers = [],
         },
+        use ChatManagerModule {
+            components = [dyn ChatManager],
+            providers = [],
+        },
     }
 }
-
 pub fn build_crab_messenger_module() -> Arc<CrabMessengerModule> {
     Arc::new(
-        CrabMessengerModule::builder(build_message_manager_module(), build_user_manager_module())
-            .build(),
+        CrabMessengerModule::builder(
+            build_message_manager_module(),
+            build_user_manager_module(),
+            build_chat_manager_module(),
+        )
+        .build(),
     )
 }

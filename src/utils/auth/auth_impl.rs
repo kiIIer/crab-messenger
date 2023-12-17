@@ -42,7 +42,7 @@ impl Auth for AuthImpl {
         let form_params = [
             ("client_id", &self.client_id),
             ("audience", &self.audience),
-            ("scope", &"openid offline_access".to_string()),
+            ("scope", &"profile openid offline_access email".to_string()),
         ];
 
         let response = client

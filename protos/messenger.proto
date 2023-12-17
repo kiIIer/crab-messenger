@@ -7,7 +7,7 @@ service Messenger{
   rpc chat(stream SendMessage) returns (stream Message);
   rpc getMessages(GetMessages) returns (Messages);
   rpc getUser(GetUser) returns (User);
-  rpc getUserChats(GetMyChats) returns (Chat);
+  rpc getUserChats(GetMyChats) returns (MyChats);
 }
 
 message SendMessage {
@@ -48,3 +48,7 @@ message Chat{
 }
 
 message GetMyChats{}
+
+message MyChats{
+  repeated Chat chats = 1;
+}

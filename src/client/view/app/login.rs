@@ -25,9 +25,11 @@ impl View for LoginViewImpl {
         rect: Rect,
         state: State,
     ) -> anyhow::Result<()> {
-        let token_text = state
+        let token_text = state.clone()
             .auth_state
             .map_or("No token".to_string(), |response| response.access_token);
+
+        let id_text = state.auth_state.map_or("No id".to_string(), |response| response.id_token);
 
         let code_text = state.code.unwrap_or("Still working on it ^^'".to_string());
 
@@ -43,6 +45,7 @@ impl View for LoginViewImpl {
             Line::from("Login link will soon open in your browser. Please log in there and then proceed in this app."),
             Line::from(format!("If it didn't work, or you know you don't have ui browser, please visit this link: {} , and enter this code: {} on your phone", uri_text, code_text)),
             Line::from(format!("This is your access_token: {}", token_text)),
+            Line::from(format!("This is your id_token: {}", id_text)),
         ])
         .wrap(Wrap { trim: true })
         .alignment(Alignment::Center)

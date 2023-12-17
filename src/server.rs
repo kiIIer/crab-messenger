@@ -4,16 +4,20 @@ use async_trait::async_trait;
 use shaku::{module, Component, Interface};
 use tonic::transport::Server as TonicServer;
 use tonic::{Request, Status};
-use tracing::{info, instrument};
+use tonic_async_interceptor::async_interceptor;
+use tracing::info;
 
+use crate::server::auth_interceptor::{
+    build_auth_interceptor_module, AuthInterceptorFactory, AuthInterceptorModule,
+};
 use crate::server::crab_messenger::{
     build_crab_messenger_module, CrabMessenger, CrabMessengerModule, MessengerAdapter,
     ResponseStream,
 };
 use crate::utils::messenger::messenger_server::MessengerServer;
 
-mod crab_messenger;
 mod auth_interceptor;
+mod crab_messenger;
 
 #[async_trait]
 pub trait Server: Interface {
@@ -25,6 +29,9 @@ pub trait Server: Interface {
 pub struct ServerImpl {
     #[shaku(inject)]
     crab_messenger: Arc<dyn CrabMessenger<chatStream = ResponseStream>>,
+
+    #[shaku(inject)]
+    auth_interceptor_factory: Arc<dyn AuthInterceptorFactory>,
 }
 
 #[async_trait]
@@ -36,23 +43,22 @@ impl Server for ServerImpl {
         let addr = "[::1]:50051".parse().unwrap();
 
         let messenger_adapter = MessengerAdapter::new(self.crab_messenger.clone());
+        let auth_interceptor = self.auth_interceptor_factory.create();
+        let interceptor_layer = async_interceptor(move |req| {
+            let interceptor = auth_interceptor.clone();
+            async move { interceptor.intercept(req).await }
+        });
 
-        let messenger = MessengerServer::with_interceptor(messenger_adapter, intercept);
+        let messenger = MessengerServer::new(messenger_adapter);
 
         TonicServer::builder()
+            .layer(interceptor_layer)
             .add_service(messenger)
             .serve(addr)
             .await?;
 
         Ok(())
     }
-}
-
-#[instrument(skip(req))]
-fn intercept(mut req: Request<()>) -> Result<Request<()>, Status> {
-    info!("Intercepting: {:?}", req);
-
-    Ok(req)
 }
 
 module! {
@@ -62,10 +68,20 @@ module! {
         use CrabMessengerModule {
             components = [dyn CrabMessenger<chatStream = ResponseStream>],
             providers = [],
-        }
+        },
+        use AuthInterceptorModule {
+            components = [dyn AuthInterceptorFactory],
+            providers = [],
+        },
     }
 }
 
 pub fn build_server_module() -> Arc<ServerModule> {
-    Arc::new(ServerModule::builder(build_crab_messenger_module()).build())
+    Arc::new(
+        ServerModule::builder(
+            build_crab_messenger_module(),
+            build_auth_interceptor_module(),
+        )
+        .build(),
+    )
 }

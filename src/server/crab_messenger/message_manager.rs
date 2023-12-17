@@ -128,6 +128,8 @@ impl MessageManager for MessageManagerImpl {
         request: Request<Streaming<SendMessage>>,
     ) -> Result<Response<Self::chatStream>, Status> {
         info!("Starting chat");
+        let metadata = request.metadata();
+        debug!("User_id: {:?}", metadata.get("user_id"));
         let (tx, rx) = mpsc::channel(16);
         let channel = self.setup_chat_channel().await?;
 
