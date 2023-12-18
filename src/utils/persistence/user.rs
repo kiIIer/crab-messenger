@@ -7,3 +7,12 @@ pub struct User {
     pub id: String,
     pub email: String,
 }
+
+impl From<User> for crate::utils::messenger::User {
+    fn from(user: User) -> Self {
+        Self {
+            id: user.id,
+            email: user.email,
+        }
+    }
+}

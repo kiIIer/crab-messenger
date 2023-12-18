@@ -11,8 +11,9 @@ use tracing::{debug, error, info};
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
-use crate::utils::messenger::{SearchUserQuery, Users, User as GUser};
-use crate::utils::persistence::schema::users;
+use crate::utils::messenger::{GetRelatedUsersRequest, SearchUserQuery, User as GUser, Users};
+use crate::utils::persistence::chat::Chat;
+use crate::utils::persistence::schema::{chats, users, users_chats};
 use crate::utils::persistence::user::User as DBUser;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
@@ -25,6 +26,11 @@ pub trait UserManager: Interface {
         request: Request<SearchUserQuery>,
     ) -> Result<Response<Users>, Status>;
     async fn create_user(&self, user: DBUser) -> Result<(), anyhow::Error>;
+
+    async fn get_related_users(
+        &self,
+        request: Request<GetRelatedUsersRequest>,
+    ) -> Result<Response<Users>, Status>;
 }
 
 #[derive(Component)]
@@ -100,6 +106,51 @@ impl UserManager for UserManagerImpl {
             })?;
 
         Ok(())
+    }
+
+    async fn get_related_users(
+        &self,
+        request: Request<GetRelatedUsersRequest>,
+    ) -> Result<Response<Users>, Status> {
+        let mut connection = self.db_connection_manager.get_connection().map_err(|e| {
+            error!("Failed to get DB connection: {}", e);
+            Status::internal("Failed to get DB connection")
+        })?;
+
+        let metadata = request.metadata();
+        let user_id = metadata.get("user_id").unwrap().to_str().unwrap();
+        debug!("User_id: {:?}", user_id);
+
+        let related_chats = users_chats::table
+            .filter(users_chats::user_id.eq(user_id))
+            .inner_join(chats::table.on(users_chats::chat_id.eq(chats::id)))
+            .select(chats::all_columns)
+            .load::<Chat>(&mut connection)
+            .map_err(|e| {
+                error!("Failed to get chats: {}", e);
+                Status::internal("Failed to get chats")
+            })?;
+
+        let related_users = users_chats::table
+            .filter(
+                users_chats::chat_id.eq_any(related_chats.iter().map(|c| c.id).collect::<Vec<_>>()),
+            )
+            .inner_join(users::table.on(users_chats::user_id.eq(users::id)))
+            .select(users::all_columns)
+            .load::<DBUser>(&mut connection)
+            .map_err(|e| {
+                error!("Failed to get users: {}", e);
+                Status::internal("Failed to get users")
+            })?;
+
+        let related_users = related_users
+            .into_iter()
+            .map(|u| u.into())
+            .collect::<Vec<GUser>>();
+
+        return Ok(Response::new(Users {
+            users: related_users,
+        }));
     }
 }
 

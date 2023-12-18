@@ -17,7 +17,10 @@ use crate::server::crab_messenger::user_manager::{
     build_user_manager_module, UserManager, UserManagerModule,
 };
 use crate::utils::messenger::messenger_server::Messenger;
-use crate::utils::messenger::{GetMessagesRequest, GetUserChatsRequest, Message as MMessage, Messages, Chats, Users, SendMessage};
+use crate::utils::messenger::{
+    Chats, GetMessagesRequest, GetRelatedUsersRequest, GetUserChatsRequest, Message as MMessage,
+    Messages, SendMessage, Users,
+};
 use crate::utils::messenger::{SearchUserQuery, User};
 
 mod chat_manager;
@@ -32,7 +35,7 @@ pub type ChatResponseStream = Pin<Box<dyn Stream<Item = Result<MMessage, Status>
 #[shaku(interface = CrabMessenger<ChatStream = ChatResponseStream>)]
 pub struct CrabMessengerImpl {
     #[shaku(inject)]
-    message_manager: Arc<dyn MessageManager<ChatStream =ChatResponseStream>>,
+    message_manager: Arc<dyn MessageManager<ChatStream = ChatResponseStream>>,
 
     #[shaku(inject)]
     user_manager: Arc<dyn UserManager>,
@@ -61,7 +64,10 @@ impl Messenger for CrabMessengerImpl {
         self.message_manager.get_messages(request).await
     }
 
-    async fn search_user(&self, request: Request<SearchUserQuery>) -> Result<Response<Users>, Status> {
+    async fn search_user(
+        &self,
+        request: Request<SearchUserQuery>,
+    ) -> Result<Response<Users>, Status> {
         self.user_manager.search_user(request).await
     }
 
@@ -71,14 +77,21 @@ impl Messenger for CrabMessengerImpl {
     ) -> Result<Response<Chats>, Status> {
         self.chat_manager.get_user_chats(request).await
     }
+
+    async fn get_related_users(
+        &self,
+        request: Request<GetRelatedUsersRequest>,
+    ) -> Result<Response<Users>, Status> {
+        self.user_manager.get_related_users(request).await
+    }
 }
 
 pub struct MessengerAdapter {
-    messenger: Arc<dyn CrabMessenger<ChatStream =ChatResponseStream>>,
+    messenger: Arc<dyn CrabMessenger<ChatStream = ChatResponseStream>>,
 }
 
 impl MessengerAdapter {
-    pub fn new(messenger: Arc<dyn CrabMessenger<ChatStream =ChatResponseStream>>) -> Self {
+    pub fn new(messenger: Arc<dyn CrabMessenger<ChatStream = ChatResponseStream>>) -> Self {
         Self { messenger }
     }
 }
@@ -101,7 +114,10 @@ impl Messenger for MessengerAdapter {
         self.messenger.get_messages(request).await
     }
 
-    async fn search_user(&self, request: Request<SearchUserQuery>) -> Result<Response<Users>, Status> {
+    async fn search_user(
+        &self,
+        request: Request<SearchUserQuery>,
+    ) -> Result<Response<Users>, Status> {
         self.messenger.search_user(request).await
     }
 
@@ -110,6 +126,13 @@ impl Messenger for MessengerAdapter {
         request: Request<GetUserChatsRequest>,
     ) -> Result<Response<Chats>, Status> {
         self.messenger.get_user_chats(request).await
+    }
+
+    async fn get_related_users(
+        &self,
+        request: Request<GetRelatedUsersRequest>,
+    ) -> Result<Response<Users>, Status> {
+        self.messenger.get_related_users(request).await
     }
 }
 

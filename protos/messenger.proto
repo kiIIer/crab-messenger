@@ -18,10 +18,10 @@ service Messenger {
   rpc GetUserChats(GetUserChatsRequest) returns (Chats);
 
   // CreateChat creates a new chat with the given name.
-  //  rpc CreateChat(CreateChatRequest) returns (Chat);
+//    rpc CreateChat(CreateChatRequest) returns (Chat);
 
   // GetRelatedUsers fetches all users that are in the same chat as the user.
-  //  rpc GetRelatedUsers(GetRelatedUsersRequest) returns (Users);
+    rpc GetRelatedUsers(GetRelatedUsersRequest) returns (Users);
 
   //  rpc SendInvite(SendInviteRequest) returns (Invite);
   //  rpc AnswerInvite(AnswerInviteRequest) returns (AnswerInviteResponse);

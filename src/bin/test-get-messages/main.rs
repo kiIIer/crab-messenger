@@ -1,4 +1,4 @@
-use crab_messenger::utils::messenger::{messenger_client::MessengerClient, GetMessages, Message};
+use crab_messenger::utils::messenger::{messenger_client::MessengerClient, GetMessagesRequest, Message};
 use prost_types::Timestamp;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         nanos: since_the_epoch.subsec_nanos() as i32,
     };
 
-    let request = tonic::Request::new(GetMessages {
+    let request = tonic::Request::new(GetMessagesRequest {
         chat_id: 1,
         created_before: Some(timestamp),
     });

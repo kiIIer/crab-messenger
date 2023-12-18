@@ -71,3 +71,6 @@ name = "simple-client"
 
 [[bin]]
 name = "test-get-my-chats"
+
+[[bin]]
+name = "test-get-related-users"
