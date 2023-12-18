@@ -11,7 +11,7 @@ use tracing::{debug, error, info};
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
-use crate::utils::messenger::{GetUser, User as GUser};
+use crate::utils::messenger::{SearchUserQuery, Users, User as GUser};
 use crate::utils::persistence::schema::users;
 use crate::utils::persistence::user::User as DBUser;
 use crate::utils::rabbit_channel_manager::{
@@ -20,7 +20,10 @@ use crate::utils::rabbit_channel_manager::{
 
 #[async_trait]
 pub trait UserManager: Interface {
-    async fn get_user(&self, request: Request<GetUser>) -> Result<Response<GUser>, Status>;
+    async fn search_user(
+        &self,
+        request: Request<SearchUserQuery>,
+    ) -> Result<Response<Users>, Status>;
     async fn create_user(&self, user: DBUser) -> Result<(), anyhow::Error>;
 }
 
@@ -36,7 +39,10 @@ pub struct UserManagerImpl {
 #[async_trait]
 impl UserManager for UserManagerImpl {
     #[tracing::instrument(skip(self, request), err)]
-    async fn get_user(&self, request: Request<GetUser>) -> Result<Response<GUser>, Status> {
+    async fn search_user(
+        &self,
+        request: Request<SearchUserQuery>,
+    ) -> Result<Response<Users>, Status> {
         info!("Getting user");
 
         let get_user_req = request.into_inner();
@@ -51,13 +57,13 @@ impl UserManager for UserManagerImpl {
                 debug!("Querying user by id: {}", user_id);
                 users::table
                     .filter(users::id.eq(user_id))
-                    .first::<DBUser>(&mut connection)
+                    .load::<DBUser>(&mut connection)
             }
             (_, Some(email)) => {
                 debug!("Querying user by email: {}", email);
                 users::table
                     .filter(users::email.eq(email))
-                    .first::<DBUser>(&mut connection)
+                    .load::<DBUser>(&mut connection)
             }
             _ => {
                 error!("No user identifier provided");
@@ -65,18 +71,21 @@ impl UserManager for UserManagerImpl {
             }
         };
 
-        let db_user = user_result.map_err(|e| {
+        let db_users = user_result.map_err(|e| {
             error!("Failed to query user: {}", e);
             Status::internal("Failed to query user")
         })?;
 
-        let grpc_user = GUser {
-            id: db_user.id,
-            email: db_user.email,
-        };
+        let grpc_users = db_users
+            .into_iter()
+            .map(|db_user| GUser {
+                id: db_user.id,
+                email: db_user.email,
+            })
+            .collect::<Vec<_>>();
 
-        info!("Returning user: {:?}", grpc_user);
-        Ok(Response::new(grpc_user))
+        info!("Returning users: {:?}", grpc_users);
+        Ok(Response::new(Users { users: grpc_users }))
     }
 
     async fn create_user(&self, user: DBUser) -> Result<(), anyhow::Error> {

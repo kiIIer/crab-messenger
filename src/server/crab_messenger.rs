@@ -17,10 +17,8 @@ use crate::server::crab_messenger::user_manager::{
     build_user_manager_module, UserManager, UserManagerModule,
 };
 use crate::utils::messenger::messenger_server::Messenger;
-use crate::utils::messenger::{
-    GetMessages, GetMyChats, Message as MMessage, Messages, MyChats, SendMessage,
-};
-use crate::utils::messenger::{GetUser, User};
+use crate::utils::messenger::{GetMessagesRequest, GetUserChatsRequest, Message as MMessage, Messages, Chats, Users, SendMessage};
+use crate::utils::messenger::{SearchUserQuery, User};
 
 mod chat_manager;
 mod message_manager;
@@ -28,13 +26,13 @@ pub mod user_manager;
 
 pub trait CrabMessenger: Interface + Messenger {}
 
-pub type ResponseStream = Pin<Box<dyn Stream<Item = Result<MMessage, Status>> + Send>>;
+pub type ChatResponseStream = Pin<Box<dyn Stream<Item = Result<MMessage, Status>> + Send>>;
 
 #[derive(Component)]
-#[shaku(interface = CrabMessenger<chatStream = ResponseStream>)]
+#[shaku(interface = CrabMessenger<ChatStream = ChatResponseStream>)]
 pub struct CrabMessengerImpl {
     #[shaku(inject)]
-    message_manager: Arc<dyn MessageManager<chatStream = ResponseStream>>,
+    message_manager: Arc<dyn MessageManager<ChatStream =ChatResponseStream>>,
 
     #[shaku(inject)]
     user_manager: Arc<dyn UserManager>,
@@ -47,70 +45,70 @@ impl CrabMessenger for CrabMessengerImpl {}
 
 #[async_trait]
 impl Messenger for CrabMessengerImpl {
-    type chatStream = ResponseStream;
+    type ChatStream = ChatResponseStream;
 
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
-    ) -> Result<Response<Self::chatStream>, Status> {
+    ) -> Result<Response<Self::ChatStream>, Status> {
         self.message_manager.chat(request).await
     }
 
     async fn get_messages(
         &self,
-        request: Request<GetMessages>,
+        request: Request<GetMessagesRequest>,
     ) -> Result<Response<Messages>, Status> {
         self.message_manager.get_messages(request).await
     }
 
-    async fn get_user(&self, request: Request<GetUser>) -> Result<Response<User>, Status> {
-        self.user_manager.get_user(request).await
+    async fn search_user(&self, request: Request<SearchUserQuery>) -> Result<Response<Users>, Status> {
+        self.user_manager.search_user(request).await
     }
 
     async fn get_user_chats(
         &self,
-        request: Request<GetMyChats>,
-    ) -> Result<Response<MyChats>, Status> {
+        request: Request<GetUserChatsRequest>,
+    ) -> Result<Response<Chats>, Status> {
         self.chat_manager.get_user_chats(request).await
     }
 }
 
 pub struct MessengerAdapter {
-    messenger: Arc<dyn CrabMessenger<chatStream = ResponseStream>>,
+    messenger: Arc<dyn CrabMessenger<ChatStream =ChatResponseStream>>,
 }
 
 impl MessengerAdapter {
-    pub fn new(messenger: Arc<dyn CrabMessenger<chatStream = ResponseStream>>) -> Self {
+    pub fn new(messenger: Arc<dyn CrabMessenger<ChatStream =ChatResponseStream>>) -> Self {
         Self { messenger }
     }
 }
 
 #[async_trait]
 impl Messenger for MessengerAdapter {
-    type chatStream = ResponseStream;
+    type ChatStream = ChatResponseStream;
 
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
-    ) -> Result<Response<Self::chatStream>, Status> {
+    ) -> Result<Response<Self::ChatStream>, Status> {
         self.messenger.chat(request).await
     }
 
     async fn get_messages(
         &self,
-        request: Request<GetMessages>,
+        request: Request<GetMessagesRequest>,
     ) -> Result<Response<Messages>, Status> {
         self.messenger.get_messages(request).await
     }
 
-    async fn get_user(&self, request: Request<GetUser>) -> Result<Response<User>, Status> {
-        self.messenger.get_user(request).await
+    async fn search_user(&self, request: Request<SearchUserQuery>) -> Result<Response<Users>, Status> {
+        self.messenger.search_user(request).await
     }
 
     async fn get_user_chats(
         &self,
-        request: Request<GetMyChats>,
-    ) -> Result<Response<MyChats>, Status> {
+        request: Request<GetUserChatsRequest>,
+    ) -> Result<Response<Chats>, Status> {
         self.messenger.get_user_chats(request).await
     }
 }
@@ -120,7 +118,7 @@ module! {
         components = [CrabMessengerImpl],
         providers = [],
         use MessageManagerModule {
-            components = [dyn MessageManager<chatStream = ResponseStream>],
+            components = [dyn MessageManager<ChatStream = ChatResponseStream>],
             providers = [],
         },
         use UserManagerModule {

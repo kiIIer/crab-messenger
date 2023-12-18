@@ -14,12 +14,12 @@ use crate::server::crab_messenger::message_manager::message_consumer::RabbitCons
 use crate::server::crab_messenger::message_manager::message_stream_handler::{
     build_message_stream_handler_module, MessageStreamHandler, MessageStreamHandlerModule,
 };
-use crate::server::crab_messenger::ResponseStream;
+use crate::server::crab_messenger::ChatResponseStream;
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
 use crate::utils::generate_random_string;
-use crate::utils::messenger::{GetMessages, Messages, SendMessage};
+use crate::utils::messenger::{GetMessagesRequest, Messages, SendMessage};
 use crate::utils::persistence::message::Message;
 use crate::utils::persistence::schema::messages;
 use crate::utils::rabbit_channel_manager::{
@@ -32,19 +32,19 @@ mod message_stream_handler;
 
 #[async_trait]
 pub trait MessageManager: Interface {
-    type chatStream;
+    type ChatStream;
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
-    ) -> Result<Response<Self::chatStream>, Status>;
+    ) -> Result<Response<Self::ChatStream>, Status>;
     async fn get_messages(
         &self,
-        request: Request<GetMessages>,
+        request: Request<GetMessagesRequest>,
     ) -> Result<Response<Messages>, Status>;
 }
 
 #[derive(Component)]
-#[shaku(interface = MessageManager<chatStream = ResponseStream>)]
+#[shaku(interface = MessageManager<ChatStream = ChatResponseStream>)]
 pub struct MessageManagerImpl {
     #[shaku(inject)]
     db_connection_manager: Arc<dyn DBConnectionManager>,
@@ -120,13 +120,13 @@ impl MessageManagerImpl {
 
 #[async_trait]
 impl MessageManager for MessageManagerImpl {
-    type chatStream = ResponseStream;
+    type ChatStream = ChatResponseStream;
 
     #[tracing::instrument(skip(self, request))]
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
-    ) -> Result<Response<Self::chatStream>, Status> {
+    ) -> Result<Response<Self::ChatStream>, Status> {
         info!("Starting chat");
         let metadata = request.metadata();
         debug!("User_id: {:?}", metadata.get("user_id"));
@@ -157,7 +157,7 @@ impl MessageManager for MessageManagerImpl {
 
     async fn get_messages(
         &self,
-        request: Request<GetMessages>,
+        request: Request<GetMessagesRequest>,
     ) -> Result<Response<Messages>, Status> {
         info!("Received request to get messages");
 

@@ -1,7 +1,7 @@
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
-use crate::utils::messenger::{Chat as GChat, GetMyChats, MyChats};
+use crate::utils::messenger::{Chat as GChat, GetUserChatsRequest, Chats};
 use crate::utils::persistence::chat::Chat;
 use crate::utils::persistence::schema::{chats, users_chats};
 use crate::utils::persistence::users_chats::UsersChats;
@@ -17,8 +17,8 @@ use tracing::{debug, error};
 pub trait ChatManager: Interface {
     async fn get_user_chats(
         &self,
-        request: Request<GetMyChats>,
-    ) -> Result<Response<MyChats>, Status>;
+        request: Request<GetUserChatsRequest>,
+    ) -> Result<Response<Chats>, Status>;
 }
 
 #[derive(Component)]
@@ -33,8 +33,8 @@ impl ChatManager for ChatManagerImpl {
     #[tracing::instrument(skip(self, request), err)]
     async fn get_user_chats(
         &self,
-        request: Request<GetMyChats>,
-    ) -> Result<Response<MyChats>, Status> {
+        request: Request<GetUserChatsRequest>,
+    ) -> Result<Response<Chats>, Status> {
         let mut connection = self.db_connection_manager.get_connection().map_err(|e| {
             error!("Failed to get DB connection: {}", e);
             Status::internal("Failed to get DB connection")
@@ -56,7 +56,7 @@ impl ChatManager for ChatManagerImpl {
 
         let chats: Vec<GChat> = chats.into_iter().map(|c| c.into()).collect();
 
-        Ok(Response::new(MyChats { chats }))
+        Ok(Response::new(Chats { chats }))
     }
 }
 

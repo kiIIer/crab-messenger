@@ -3,7 +3,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use shaku::{module, Component, Interface};
 use tonic::transport::Server as TonicServer;
-use tonic::{Request, Status};
 use tonic_async_interceptor::async_interceptor;
 use tracing::info;
 
@@ -12,7 +11,7 @@ use crate::server::auth_interceptor::{
 };
 use crate::server::crab_messenger::{
     build_crab_messenger_module, CrabMessenger, CrabMessengerModule, MessengerAdapter,
-    ResponseStream,
+    ChatResponseStream,
 };
 use crate::utils::messenger::messenger_server::MessengerServer;
 
@@ -28,7 +27,7 @@ pub trait Server: Interface {
 #[shaku(interface = Server)]
 pub struct ServerImpl {
     #[shaku(inject)]
-    crab_messenger: Arc<dyn CrabMessenger<chatStream = ResponseStream>>,
+    crab_messenger: Arc<dyn CrabMessenger<ChatStream =ChatResponseStream>>,
 
     #[shaku(inject)]
     auth_interceptor_factory: Arc<dyn AuthInterceptorFactory>,
@@ -66,7 +65,7 @@ module! {
         components = [ServerImpl],
         providers = [],
         use CrabMessengerModule {
-            components = [dyn CrabMessenger<chatStream = ResponseStream>],
+            components = [dyn CrabMessenger<ChatStream = ChatResponseStream>],
             providers = [],
         },
         use AuthInterceptorModule {

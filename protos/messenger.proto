@@ -3,18 +3,59 @@ package messenger;
 
 import "google/protobuf/timestamp.proto";
 
-service Messenger{
-  rpc chat(stream SendMessage) returns (stream Message);
-  rpc getMessages(GetMessages) returns (Messages);
-  rpc getUser(GetUser) returns (User);
-  rpc getUserChats(GetMyChats) returns (MyChats);
+// The Messenger service provides functionalities for a chat application.
+service Messenger {
+  // Chat provides a bidirectional stream for sending and receiving messages.
+  rpc Chat(stream SendMessage) returns (stream Message);
+
+  // GetMessages retrieves messages for a given chat before a specified timestamp.
+  rpc GetMessages(GetMessagesRequest) returns (Messages);
+
+  // SearchUser allows searching for users by user ID or email.
+  rpc SearchUser(SearchUserQuery) returns (Users);
+
+  // GetUserChats fetches all chats that the user is part of.
+  rpc GetUserChats(GetUserChatsRequest) returns (Chats);
+
+  // CreateChat creates a new chat with the given name.
+  //  rpc CreateChat(CreateChatRequest) returns (Chat);
+
+  // GetRelatedUsers fetches all users that are in the same chat as the user.
+  //  rpc GetRelatedUsers(GetRelatedUsersRequest) returns (Users);
+
+  //  rpc SendInvite(SendInviteRequest) returns (Invite);
+  //  rpc AnswerInvite(AnswerInviteRequest) returns (AnswerInviteResponse);
+  //  rpc Invites(stream InvitesRequest) returns (stream Invite);
 }
 
+// GetRelatedUsersRequest is an empty request used for fetching related users.
+message GetRelatedUsersRequest {}
+
+// InvitesRequest is an empty request used for getting steam of invites.
+message InvitesRequest {}
+
+// AnswerInviteRequest represents the request format for answering an invite.
+message AnswerInviteRequest {
+  int32 invite_id = 1;
+  bool accept = 2;
+}
+
+message AnswerInviteResponse {
+  bool success = 1;
+}
+
+// CreateChatRequest represents the request format for creating a new chat.
+message CreateChatRequest {
+  string name = 1;
+}
+
+// SendMessage represents the request format for sending a message.
 message SendMessage {
   string text = 1;
   int32 chat_id = 2;
 }
 
+// Message represents the structure of a chat message.
 message Message {
   int32 id = 1;
   string user_id = 2;
@@ -23,32 +64,59 @@ message Message {
   google.protobuf.Timestamp created_at = 5;
 }
 
-message GetMessages{
+// GetMessagesRequest represents the request format for retrieving messages.
+message GetMessagesRequest {
   int32 chat_id = 1;
   google.protobuf.Timestamp created_before = 2;
 }
 
-message Messages{
+// Messages holds a collection of Message objects.
+message Messages {
   repeated Message messages = 1;
 }
 
-message GetUser{
+// SearchUserQuery represents the criteria for searching users.
+message SearchUserQuery {
   optional string user_id = 1;
   optional string email = 2;
 }
 
-message User{
+// SearchUserResult holds the search results as a collection of Users.
+message Users{
+  repeated User users = 1;
+}
+
+// User represents the user's basic information.
+message User {
   string id = 1;
   string email = 2;
 }
 
-message Chat{
+// Chat represents the basic information of a chat.
+message Chat {
   int32 id = 1;
   string name = 2;
 }
 
-message GetMyChats{}
+// GetUserChatsRequest is an empty request used for fetching user chats.
+message GetUserChatsRequest {}
 
-message MyChats{
+// Chats holds a collection of Chat objects.
+message Chats {
   repeated Chat chats = 1;
+}
+
+// SendInviteRequest represents the request format for sending an invite.
+message SendInviteRequest {
+  string user_id = 1;
+  int32 chat_id = 2;
+}
+
+// Invite represents the basic information of an invite.
+message Invite {
+  int32 id = 1;
+  string  inviter_user_id = 2;
+  string invitee_user_id = 3;
+  int32 chat_id = 4;
+  google.protobuf.Timestamp created_at = 5;
 }
