@@ -10,6 +10,9 @@ use tonic::{Request, Response, Status, Streaming};
 use crate::server::crab_messenger::chat_manager::{
     build_chat_manager_module, ChatManager, ChatManagerModule,
 };
+use crate::server::crab_messenger::invite_manager::{
+    build_invite_manager_module, InviteManager, InviteManagerModule,
+};
 use crate::server::crab_messenger::message_manager::{
     build_message_manager_module, MessageManager, MessageManagerModule,
 };
@@ -19,13 +22,15 @@ use crate::server::crab_messenger::user_manager::{
 use crate::utils::messenger::messenger_server::Messenger;
 use crate::utils::messenger::{
     Chats, GetMessagesRequest, GetRelatedUsersRequest, GetUserChatsRequest, Message as MMessage,
-    Messages, SendMessage, Users,
+    Messages, SendInviteRequest, SendMessage, Users,
 };
-use crate::utils::messenger::{SearchUserQuery, User};
+use crate::utils::messenger::{SearchUserQuery, SendInviteResponse};
 
 mod chat_manager;
 mod message_manager;
 pub mod user_manager;
+
+mod invite_manager;
 
 pub trait CrabMessenger: Interface + Messenger {}
 
@@ -39,6 +44,9 @@ pub struct CrabMessengerImpl {
 
     #[shaku(inject)]
     user_manager: Arc<dyn UserManager>,
+
+    #[shaku(inject)]
+    invite_manager: Arc<dyn InviteManager>,
 
     #[shaku(inject)]
     chat_manager: Arc<dyn ChatManager>,
@@ -83,6 +91,13 @@ impl Messenger for CrabMessengerImpl {
         request: Request<GetRelatedUsersRequest>,
     ) -> Result<Response<Users>, Status> {
         self.user_manager.get_related_users(request).await
+    }
+
+    async fn send_invite(
+        &self,
+        request: Request<SendInviteRequest>,
+    ) -> Result<Response<SendInviteResponse>, Status> {
+        self.invite_manager.send_invite(request).await
     }
 }
 
@@ -134,6 +149,13 @@ impl Messenger for MessengerAdapter {
     ) -> Result<Response<Users>, Status> {
         self.messenger.get_related_users(request).await
     }
+
+    async fn send_invite(
+        &self,
+        request: Request<SendInviteRequest>,
+    ) -> Result<Response<SendInviteResponse>, Status> {
+        self.messenger.send_invite(request).await
+    }
 }
 
 module! {
@@ -152,14 +174,20 @@ module! {
             components = [dyn ChatManager],
             providers = [],
         },
+        use InviteManagerModule {
+            components = [dyn InviteManager],
+            providers = [],
+        },
     }
 }
+
 pub fn build_crab_messenger_module() -> Arc<CrabMessengerModule> {
     Arc::new(
         CrabMessengerModule::builder(
             build_message_manager_module(),
             build_user_manager_module(),
             build_chat_manager_module(),
+            build_invite_manager_module(),
         )
         .build(),
     )

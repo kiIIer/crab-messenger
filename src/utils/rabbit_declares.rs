@@ -6,9 +6,13 @@ use amqprs::error::Error;
 use amqprs::{BasicProperties, FieldTable};
 
 pub const NEW_MESSAGE_EXCHANGE: &str = "NewMessageExchange";
-pub const MESSAGES_EXCHANGE: &str = "MessageSExchange";
+pub const MESSAGES_EXCHANGE: &str = "MessagesExchange";
 pub const ERROR_EXCHANGE: &str = "ErrorExchange";
 pub const ERROR_QUEUE: &str = "ErrorQueue";
+
+pub const SEND_INVITE_EXCHANGE: &str = "SendInviteExchange";
+
+pub const INVITES_EXCHANGE: &str = "InviteExchange";
 
 pub async fn declare_new_message_exchange(channel: &Channel) -> Result<(), Error> {
     channel
@@ -19,10 +23,34 @@ pub async fn declare_new_message_exchange(channel: &Channel) -> Result<(), Error
         .await
 }
 
+pub async fn declare_send_invite_exchange(channel: &Channel) -> Result<(), Error> {
+    channel
+        .exchange_declare(ExchangeDeclareArguments::new(
+            SEND_INVITE_EXCHANGE,
+            "direct",
+        ))
+        .await
+}
+
 pub async fn declare_messages_exchange(channel: &Channel) -> Result<(), Error> {
     channel
         .exchange_declare(
             ExchangeDeclareArguments::of_type(MESSAGES_EXCHANGE, ExchangeType::Fanout)
+                .passive(false)
+                .durable(false)
+                .auto_delete(false)
+                .internal(false)
+                .no_wait(false)
+                .arguments(FieldTable::default())
+                .finish(),
+        )
+        .await
+}
+
+pub async fn declare_invites_exchange(channel: &Channel) -> Result<(), Error> {
+    channel
+        .exchange_declare(
+            ExchangeDeclareArguments::of_type(INVITES_EXCHANGE, ExchangeType::Fanout)
                 .passive(false)
                 .durable(false)
                 .auto_delete(false)

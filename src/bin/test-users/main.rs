@@ -4,7 +4,7 @@ use crab_messenger::utils::messenger::messenger_client::MessengerClient;
 async fn main() -> anyhow::Result<()> {
     let mut client = MessengerClient::connect("http://[::1]:50051").await?;
 
-    let request = tonic::Request::new(crab_messenger::utils::messenger::GetUser {
+    let request = tonic::Request::new(crab_messenger::utils::messenger::SearchUserQuery {
         user_id: Some("google-oauth2|108706181521622783833".to_string()),
         email: None,
     });

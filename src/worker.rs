@@ -13,12 +13,14 @@ use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
 use crate::utils::rabbit_declares::{
-    declare_messages_exchange, declare_new_message_exchange, setup_error_handling,
-    NEW_MESSAGE_EXCHANGE,
+    declare_invites_exchange, declare_messages_exchange, declare_new_message_exchange,
+    declare_send_invite_exchange, setup_error_handling, NEW_MESSAGE_EXCHANGE, SEND_INVITE_EXCHANGE,
 };
 use crate::worker::new_message_consumer::NewMessageConsumer;
+use crate::worker::send_invite_consumer::SendInviteConsumer;
 
 mod new_message_consumer;
+mod send_invite_consumer;
 
 #[async_trait]
 pub trait Worker: Interface {
@@ -61,9 +63,21 @@ impl Worker for WorkerImpl {
             e
         })?;
 
-        let queue_name = "new_message_queue";
+        declare_send_invite_exchange(&channel).await.map_err(|e| {
+            error!("Failed to declare exchange: {:?}", e);
+            e
+        })?;
+
+        declare_invites_exchange(&channel).await.map_err(|e| {
+            error!("Failed to declare exchange: {:?}", e);
+            e
+        })?;
+
+        let new_message_queue = "new_message_queue";
         channel
-            .queue_declare(QueueDeclareArguments::durable_client_named(queue_name))
+            .queue_declare(QueueDeclareArguments::durable_client_named(
+                new_message_queue,
+            ))
             .await
             .map_err(|e| {
                 error!("Failed to declare queue: {:?}", e);
@@ -72,7 +86,7 @@ impl Worker for WorkerImpl {
 
         channel
             .queue_bind(QueueBindArguments::new(
-                queue_name,
+                new_message_queue,
                 NEW_MESSAGE_EXCHANGE,
                 "",
             ))
@@ -82,13 +96,50 @@ impl Worker for WorkerImpl {
                 e
             })?;
 
-        let consumer = NewMessageConsumer::new(self.connection_manager.clone());
-        let args = BasicConsumeArguments::new(queue_name, "worker");
+        let message_consumer = NewMessageConsumer::new(self.connection_manager.clone());
+        let args = BasicConsumeArguments::new(new_message_queue, "worker-messages");
 
-        channel.basic_consume(consumer, args).await.map_err(|e| {
-            error!("Failed to consume: {:?}", e);
-            e
-        })?;
+        channel
+            .basic_consume(message_consumer, args)
+            .await
+            .map_err(|e| {
+                error!("Failed to consume: {:?}", e);
+                e
+            })?;
+
+        let send_invite_queue = "send_invite_queue";
+        channel
+            .queue_declare(QueueDeclareArguments::durable_client_named(
+                send_invite_queue,
+            ))
+            .await
+            .map_err(|e| {
+                error!("Failed to declare queue: {:?}", e);
+                e
+            })?;
+
+        channel
+            .queue_bind(QueueBindArguments::new(
+                send_invite_queue,
+                SEND_INVITE_EXCHANGE,
+                "",
+            ))
+            .await
+            .map_err(|e| {
+                error!("Failed to bind queue: {:?}", e);
+                e
+            })?;
+
+        let invite_consumer = SendInviteConsumer::new(self.connection_manager.clone());
+        let args = BasicConsumeArguments::new(send_invite_queue, "worker-invites");
+
+        channel
+            .basic_consume(invite_consumer, args)
+            .await
+            .map_err(|e| {
+                error!("Failed to consume: {:?}", e);
+                e
+            })?;
 
         signal::ctrl_c().await.map_err(|e| {
             error!("Failed to wait for ctrl-c: {:?}", e);

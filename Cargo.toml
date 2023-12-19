@@ -74,3 +74,6 @@ name = "test-get-my-chats"
 
 [[bin]]
 name = "test-get-related-users"
+
+[[bin]]
+name = "test-send-invite"

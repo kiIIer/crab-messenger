@@ -4,7 +4,6 @@ use crate::utils::db_connection_manager::{
 use crate::utils::messenger::{Chat as GChat, GetUserChatsRequest, Chats};
 use crate::utils::persistence::chat::Chat;
 use crate::utils::persistence::schema::{chats, users_chats};
-use crate::utils::persistence::users_chats::UsersChats;
 use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::QueryDsl;
