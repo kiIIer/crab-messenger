@@ -80,3 +80,6 @@ name = "test-send-invite"
 
 [[bin]]
 name = "test-invites"
+
+[[bin]]
+name = "test-get-invites"

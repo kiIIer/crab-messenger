@@ -9,7 +9,7 @@ async fn main() -> anyhow::Result<()> {
         email: None,
     });
 
-    let response = client.get_user(request).await?;
+    let response = client.search_user(request).await?;
 
     println!("RESPONSE={:?}", response);
 

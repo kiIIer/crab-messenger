@@ -3,13 +3,18 @@ use amqprs::channel::{
     QueueDeclareArguments,
 };
 use amqprs::BasicProperties;
+use diesel::prelude::*;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use crate::server::crab_messenger::invite_manager::invite_consumer::RabbitConsumer;
 use crate::server::crab_messenger::InviteResponseStream;
+use crate::utils::db_connection_manager::{
+    build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
+};
 use crate::utils::generate_random_string;
 use async_trait::async_trait;
+use diesel::{QueryDsl, RunQueryDsl};
 use serde::{Deserialize, Serialize};
 use shaku::{module, Component, Interface};
 use tokio::sync::mpsc;
@@ -19,9 +24,12 @@ use tracing::field::debug;
 use tracing::{debug, error, info};
 
 use crate::utils::messenger::{
-    Invite as ProtoInvite, InvitesRequest, SendInviteRequest, SendInviteResponse,
+    GetInvitesRequest, GetInvitesResponse, Invite as ProtoInvite, InvitesRequest,
+    SendInviteRequest, SendInviteResponse,
 };
-use crate::utils::persistence::schema::messages::user_id;
+use crate::utils::persistence::chat::Chat;
+use crate::utils::persistence::invite::Invite;
+use crate::utils::persistence::schema::{chats, invites, users_chats};
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
@@ -42,6 +50,11 @@ pub trait InviteManager: Interface {
         &self,
         request: Request<InvitesRequest>,
     ) -> Result<Response<InviteResponseStream>, Status>;
+
+    async fn get_invites(
+        &self,
+        request: Request<GetInvitesRequest>,
+    ) -> Result<Response<GetInvitesResponse>, Status>;
 }
 
 #[derive(Component, Clone)]
@@ -49,6 +62,8 @@ pub trait InviteManager: Interface {
 pub struct InviteManagerImpl {
     #[shaku(inject)]
     channel_manager: Arc<dyn ChannelManager>,
+    #[shaku(inject)]
+    db_connection_manager: Arc<dyn DBConnectionManager>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -158,6 +173,37 @@ impl InviteManager for InviteManagerImpl {
 
         Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
     }
+
+    async fn get_invites(
+        &self,
+        request: Request<GetInvitesRequest>,
+    ) -> Result<Response<GetInvitesResponse>, Status> {
+        let metadata = request.metadata();
+        let user_id = metadata
+            .get("user_id")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let mut connection = self.db_connection_manager.get_connection().map_err(|e| {
+            error!("Failed to get connection: {:?}", e);
+            Status::internal("Failed to get connection")
+        })?;
+
+        let invites = invites::table
+            .filter(invites::invitee_user_id.eq(user_id))
+            .select(invites::all_columns)
+            .load::<Invite>(&mut connection)
+            .map_err(|e| {
+                error!("Failed to get chats: {}", e);
+                Status::internal("Failed to get chats")
+            })?;
+
+        Ok(Response::new(GetInvitesResponse {
+            invites: invites.into_iter().map(|i| i.into()).collect(),
+        }))
+    }
 }
 
 impl InviteManagerImpl {
@@ -237,10 +283,20 @@ module! {
         use ChannelManagerModule {
             components = [dyn ChannelManager],
             providers = []
+        },
+        use DBConnectionManagerModule {
+            components = [dyn DBConnectionManager],
+            providers = []
         }
     }
 }
 
 pub fn build_invite_manager_module() -> Arc<InviteManagerModule> {
-    Arc::new(InviteManagerModule::builder(build_channel_manager_module()).build())
+    Arc::new(
+        InviteManagerModule::builder(
+            build_channel_manager_module(),
+            build_db_connection_manager_module(),
+        )
+        .build(),
+    )
 }
