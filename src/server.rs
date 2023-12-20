@@ -10,8 +10,8 @@ use crate::server::auth_interceptor::{
     build_auth_interceptor_module, AuthInterceptorFactory, AuthInterceptorModule,
 };
 use crate::server::crab_messenger::{
-    build_crab_messenger_module, CrabMessenger, CrabMessengerModule, MessengerAdapter,
-    ChatResponseStream,
+    build_crab_messenger_module, ChatResponseStream, CrabMessenger, CrabMessengerModule,
+    InviteResponseStream, MessengerAdapter,
 };
 use crate::utils::messenger::messenger_server::MessengerServer;
 
@@ -27,7 +27,9 @@ pub trait Server: Interface {
 #[shaku(interface = Server)]
 pub struct ServerImpl {
     #[shaku(inject)]
-    crab_messenger: Arc<dyn CrabMessenger<ChatStream =ChatResponseStream>>,
+    crab_messenger: Arc<
+        dyn CrabMessenger<ChatStream = ChatResponseStream, InvitesStream = InviteResponseStream>,
+    >,
 
     #[shaku(inject)]
     auth_interceptor_factory: Arc<dyn AuthInterceptorFactory>,
@@ -65,7 +67,7 @@ module! {
         components = [ServerImpl],
         providers = [],
         use CrabMessengerModule {
-            components = [dyn CrabMessenger<ChatStream = ChatResponseStream>],
+            components = [dyn CrabMessenger<ChatStream = ChatResponseStream, InvitesStream = InviteResponseStream>],
             providers = [],
         },
         use AuthInterceptorModule {

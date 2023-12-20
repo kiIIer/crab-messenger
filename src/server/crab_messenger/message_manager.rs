@@ -133,7 +133,7 @@ impl MessageManager for MessageManagerImpl {
         let (tx, rx) = mpsc::channel(16);
         let channel = self.setup_chat_channel().await?;
 
-        let queue_name = generate_random_string(10);
+        let queue_name = generate_random_string(16);
         let routing_key = "1"; // Adjust the routing key logic as needed
 
         self.setup_queue(&channel, &queue_name, routing_key).await?;

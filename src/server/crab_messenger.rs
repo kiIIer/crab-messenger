@@ -21,8 +21,8 @@ use crate::server::crab_messenger::user_manager::{
 };
 use crate::utils::messenger::messenger_server::Messenger;
 use crate::utils::messenger::{
-    Chats, GetMessagesRequest, GetRelatedUsersRequest, GetUserChatsRequest, Message as MMessage,
-    Messages, SendInviteRequest, SendMessage, Users,
+    Chats, GetMessagesRequest, GetRelatedUsersRequest, GetUserChatsRequest, Invite as ProtoInvite,
+    InvitesRequest, Message as MMessage, Messages, SendInviteRequest, SendMessage, Users,
 };
 use crate::utils::messenger::{SearchUserQuery, SendInviteResponse};
 
@@ -34,10 +34,8 @@ mod invite_manager;
 
 pub trait CrabMessenger: Interface + Messenger {}
 
-pub type ChatResponseStream = Pin<Box<dyn Stream<Item = Result<MMessage, Status>> + Send>>;
-
 #[derive(Component)]
-#[shaku(interface = CrabMessenger<ChatStream = ChatResponseStream>)]
+#[shaku(interface = CrabMessenger<ChatStream = ChatResponseStream, InvitesStream = InviteResponseStream>)]
 pub struct CrabMessengerImpl {
     #[shaku(inject)]
     message_manager: Arc<dyn MessageManager<ChatStream = ChatResponseStream>>,
@@ -53,11 +51,12 @@ pub struct CrabMessengerImpl {
 }
 
 impl CrabMessenger for CrabMessengerImpl {}
+pub type ChatResponseStream = Pin<Box<dyn Stream<Item = Result<MMessage, Status>> + Send>>;
+pub type InviteResponseStream = Pin<Box<dyn Stream<Item = Result<ProtoInvite, Status>> + Send>>;
 
 #[async_trait]
 impl Messenger for CrabMessengerImpl {
     type ChatStream = ChatResponseStream;
-
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
@@ -99,14 +98,32 @@ impl Messenger for CrabMessengerImpl {
     ) -> Result<Response<SendInviteResponse>, Status> {
         self.invite_manager.send_invite(request).await
     }
+
+    type InvitesStream = InviteResponseStream;
+
+    async fn invites(
+        &self,
+        request: Request<InvitesRequest>,
+    ) -> Result<Response<Self::InvitesStream>, Status> {
+        self.invite_manager.invites(request).await
+    }
 }
 
 pub struct MessengerAdapter {
-    messenger: Arc<dyn CrabMessenger<ChatStream = ChatResponseStream>>,
+    messenger: Arc<
+        dyn CrabMessenger<ChatStream = ChatResponseStream, InvitesStream = InviteResponseStream>,
+    >,
 }
 
 impl MessengerAdapter {
-    pub fn new(messenger: Arc<dyn CrabMessenger<ChatStream = ChatResponseStream>>) -> Self {
+    pub fn new(
+        messenger: Arc<
+            dyn CrabMessenger<
+                ChatStream = ChatResponseStream,
+                InvitesStream = InviteResponseStream,
+            >,
+        >,
+    ) -> Self {
         Self { messenger }
     }
 }
@@ -114,7 +131,6 @@ impl MessengerAdapter {
 #[async_trait]
 impl Messenger for MessengerAdapter {
     type ChatStream = ChatResponseStream;
-
     async fn chat(
         &self,
         request: Request<Streaming<SendMessage>>,
@@ -155,6 +171,15 @@ impl Messenger for MessengerAdapter {
         request: Request<SendInviteRequest>,
     ) -> Result<Response<SendInviteResponse>, Status> {
         self.messenger.send_invite(request).await
+    }
+
+    type InvitesStream = InviteResponseStream;
+
+    async fn invites(
+        &self,
+        request: Request<InvitesRequest>,
+    ) -> Result<Response<Self::InvitesStream>, Status> {
+        self.messenger.invites(request).await
     }
 }
 

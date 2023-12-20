@@ -25,7 +25,7 @@ service Messenger {
 
   rpc SendInvite(SendInviteRequest) returns (SendInviteResponse);
   //  rpc AnswerInvite(AnswerInviteRequest) returns (AnswerInviteResponse);
-  //  rpc Invites(InvitesRequest) returns (stream Invite);
+  rpc Invites(InvitesRequest) returns (stream Invite);
 }
 
 // GetRelatedUsersRequest is an empty request used for fetching related users.
