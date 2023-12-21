@@ -1,15 +1,18 @@
 use std::sync::Arc;
 
 use amqprs::channel::{BasicConsumeArguments, Channel, QueueBindArguments, QueueDeclareArguments};
+use amqprs::consumer::AsyncConsumer;
 use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
 use shaku::{module, Component, Interface};
 use tokio::sync::mpsc;
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
+use tonic::codegen::Body;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{debug, error, info};
 
+use crate::server::crab_messenger::message_manager::connect_consumer::ConnectConsumer;
 use crate::server::crab_messenger::message_manager::message_consumer::RabbitConsumer;
 use crate::server::crab_messenger::message_manager::message_stream_handler::{
     build_message_stream_handler_module, MessageStreamHandler, MessageStreamHandlerModule,
@@ -21,12 +24,17 @@ use crate::utils::db_connection_manager::{
 use crate::utils::generate_random_string;
 use crate::utils::messenger::{GetMessagesRequest, Messages, SendMessage};
 use crate::utils::persistence::message::Message;
-use crate::utils::persistence::schema::messages;
+use crate::utils::persistence::schema::{messages, users_chats};
+use crate::utils::persistence::users_chats::UsersChats;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
-use crate::utils::rabbit_declares::{declare_new_message_exchange, MESSAGES_EXCHANGE};
+use crate::utils::rabbit_declares::{
+    declare_chat_connect_exchange, declare_messages_exchange, declare_new_message_exchange,
+    CHAT_CONNECT_EXCHANGE, MESSAGES_EXCHANGE,
+};
 
+mod connect_consumer;
 mod message_consumer;
 mod message_stream_handler;
 
@@ -62,7 +70,7 @@ impl MessageManagerImpl {
         })
     }
 
-    async fn setup_queue(
+    async fn setup_new_messages_queue(
         &self,
         channel: &Channel,
         queue_name: &str,
@@ -86,9 +94,49 @@ impl MessageManagerImpl {
                 Status::internal("Failed to declare queue")
             })?;
 
+        let exchange_name = format!("{}-{}", MESSAGES_EXCHANGE, routing_key);
+        declare_messages_exchange(channel, routing_key).await.map_err(|e| {
+            error!("Failed to declare exchange: {:?}", e);
+            Status::internal("Failed to declare exchange")
+        })?;
+        channel
+            .queue_bind(QueueBindArguments::new(queue_name, &exchange_name, "").finish())
+            .await
+            .map_err(|e| {
+                error!("Failed to bind queue: {:?}", e);
+                Status::internal("Failed to bind queue")
+            })?;
+
+        Ok(())
+    }
+
+    async fn setup_connect_queue(
+        &self,
+        channel: &Channel,
+        queue_name: &str,
+        routing_key: &str,
+    ) -> Result<(), Status> {
+        declare_chat_connect_exchange(channel).await.map_err(|e| {
+            error!("Failed to declare exchange: {:?}", e);
+            Status::internal("Failed to declare exchange")
+        })?;
+
+        channel
+            .queue_declare(
+                QueueDeclareArguments::new(queue_name)
+                    .auto_delete(true)
+                    .durable(false)
+                    .finish(),
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to declare queue: {:?}", e);
+                Status::internal("Failed to declare queue")
+            })?;
+
         channel
             .queue_bind(
-                QueueBindArguments::new(queue_name, MESSAGES_EXCHANGE, routing_key).finish(),
+                QueueBindArguments::new(queue_name, CHAT_CONNECT_EXCHANGE, routing_key).finish(),
             )
             .await
             .map_err(|e| {
@@ -99,12 +147,15 @@ impl MessageManagerImpl {
         Ok(())
     }
 
-    async fn consume_messages(
+    async fn consume_messages<T>(
         &self,
         channel: &Channel,
-        consumer: RabbitConsumer,
+        consumer: T,
         queue_name: &str,
-    ) -> Result<String, Status> {
+    ) -> Result<String, Status>
+    where
+        T: AsyncConsumer + Send + 'static,
+    {
         channel
             .basic_consume(
                 consumer,
@@ -129,23 +180,65 @@ impl MessageManager for MessageManagerImpl {
     ) -> Result<Response<Self::ChatStream>, Status> {
         info!("Starting chat");
         let metadata = request.metadata();
-        debug!("User_id: {:?}", metadata.get("user_id"));
+        let user_id = metadata
+            .get("user_id")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let user_id_clone = user_id.clone();
+        let mut connection = self.db_connection_manager.get_connection().map_err(|e| {
+            error!("Failed to get DB connection: {}", e);
+            Status::internal("Failed to get DB connection")
+        })?;
         let (tx, rx) = mpsc::channel(16);
-        let channel = self.setup_chat_channel().await?;
+        let channel = self.setup_chat_channel().await.map_err(|e| {
+            error!("Failed to setup chat channel: {:?}", e);
+            Status::internal("Failed to setup chat channel")
+        })?;
 
         let queue_name = generate_random_string(16);
-        let routing_key = "1"; // Adjust the routing key logic as needed
 
-        self.setup_queue(&channel, &queue_name, routing_key).await?;
+        let connect_queue_name = format!("connect-{}", &queue_name);
+        self.setup_connect_queue(&channel, &connect_queue_name, &user_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to setup connect queue: {:?}", e);
+                Status::internal("Failed to setup connect queue")
+            })?;
 
-        let consumer = RabbitConsumer::new(tx.clone(), queue_name.clone());
-        self.consume_messages(&channel, consumer, &queue_name)
+        let connect_consumer = ConnectConsumer::new(queue_name.clone());
+        let connect_consumer_tag = self
+            .consume_messages(&channel, connect_consumer, &connect_queue_name)
+            .await?;
+
+        let my_chats = users_chats::table
+            .filter(users_chats::user_id.eq(user_id))
+            .select(users_chats::all_columns)
+            .load::<UsersChats>(&mut connection)
+            .map_err(|e| {
+                error!("Failed to get chats: {}", e);
+                Status::internal("Failed to get chats")
+            })?;
+
+        for chat in my_chats {
+            let routing_key = format!("{}", chat.chat_id);
+            self.setup_new_messages_queue(&channel, &queue_name, &routing_key)
+                .await?;
+        }
+
+        let cunsumer_tag = self
+            .consume_messages(
+                &channel,
+                RabbitConsumer::new(tx, queue_name.clone()),
+                &queue_name,
+            )
             .await?;
 
         let message_stream_handler = self.message_stream_handler.clone();
         tokio::spawn(async move {
             if let Err(e) = message_stream_handler
-                .handle_stream(request.into_inner(), &channel)
+                .handle_stream(request.into_inner(), &channel, user_id_clone)
                 .await
             {
                 error!("Error handling stream: {:?}", e);

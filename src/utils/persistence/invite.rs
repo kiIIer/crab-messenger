@@ -2,7 +2,7 @@ use diesel::prelude::*;
 use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
 
-#[derive(Queryable, Selectable, Serialize, Deserialize)]
+#[derive(Queryable, Selectable, Serialize, Deserialize, Insertable, AsChangeset, Identifiable, Debug)]
 #[diesel(table_name = crate::utils::persistence::schema::invites)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Invite {
@@ -13,7 +13,7 @@ pub struct Invite {
     pub created_at: chrono::NaiveDateTime,
 }
 
-#[derive(Insertable, Serialize, Deserialize, Queryable)]
+#[derive(Insertable, Serialize, Deserialize, Queryable, Debug)]
 #[diesel(table_name = crate::utils::persistence::schema::invites)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct InsertInvite {

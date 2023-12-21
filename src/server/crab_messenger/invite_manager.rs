@@ -1,11 +1,22 @@
+use std::sync::Arc;
+
 use amqprs::channel::{
     BasicConsumeArguments, BasicPublishArguments, Channel, QueueBindArguments,
     QueueDeclareArguments,
 };
 use amqprs::BasicProperties;
+use async_trait::async_trait;
+use diesel::associations::HasTable;
 use diesel::prelude::*;
-use std::sync::mpsc::Sender;
-use std::sync::Arc;
+use diesel::r2d2::ConnectionManager;
+use diesel::{QueryDsl, RunQueryDsl};
+use r2d2::PooledConnection;
+use serde::{Deserialize, Serialize};
+use shaku::{module, Component, Interface};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tonic::{Request, Response, Status};
+use tracing::{debug, error, info};
 
 use crate::server::crab_messenger::invite_manager::invite_consumer::RabbitConsumer;
 use crate::server::crab_messenger::InviteResponseStream;
@@ -13,29 +24,20 @@ use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
 use crate::utils::generate_random_string;
-use async_trait::async_trait;
-use diesel::{QueryDsl, RunQueryDsl};
-use serde::{Deserialize, Serialize};
-use shaku::{module, Component, Interface};
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
-use tonic::{Request, Response, Status};
-use tracing::field::debug;
-use tracing::{debug, error, info};
-
 use crate::utils::messenger::{
-    GetInvitesRequest, GetInvitesResponse, Invite as ProtoInvite, InvitesRequest,
-    SendInviteRequest, SendInviteResponse,
+    AnswerInviteRequest, AnswerInviteResponse, GetInvitesRequest, GetInvitesResponse,
+    InvitesRequest, SendInviteRequest, SendInviteResponse,
 };
-use crate::utils::persistence::chat::Chat;
 use crate::utils::persistence::invite::Invite;
-use crate::utils::persistence::schema::{chats, invites, users_chats};
+use crate::utils::persistence::schema::invites;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
 use crate::utils::rabbit_declares::{
-    declare_invites_exchange, declare_send_invite_exchange, INVITES_EXCHANGE, SEND_INVITE_EXCHANGE,
+    declare_accept_invites_exchange, declare_invites_exchange, declare_send_invite_exchange,
+    ACCEPT_INVITES_EXCHANGE, INVITES_EXCHANGE, SEND_INVITE_EXCHANGE,
 };
+use crate::utils::rabbit_types::RabbitInviteAccept;
 
 mod invite_consumer;
 
@@ -55,6 +57,11 @@ pub trait InviteManager: Interface {
         &self,
         request: Request<GetInvitesRequest>,
     ) -> Result<Response<GetInvitesResponse>, Status>;
+
+    async fn answer_invite(
+        &self,
+        request: Request<AnswerInviteRequest>,
+    ) -> Result<Response<AnswerInviteResponse>, Status>;
 }
 
 #[derive(Component, Clone)]
@@ -204,6 +211,54 @@ impl InviteManager for InviteManagerImpl {
             invites: invites.into_iter().map(|i| i.into()).collect(),
         }))
     }
+
+    async fn answer_invite(
+        &self,
+        request: Request<AnswerInviteRequest>,
+    ) -> Result<Response<AnswerInviteResponse>, Status> {
+        let metadata = request.metadata();
+        let user_id = metadata
+            .get("user_id")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let answer_invite_request = request.into_inner();
+
+        match answer_invite_request.accept {
+            false => self
+                .answer_nay(
+                    &mut self.db_connection_manager.get_connection().map_err(|e| {
+                        error!("Failed to get connection: {:?}", e);
+                        Status::internal("Failed to get connection")
+                    })?,
+                    answer_invite_request.invite_id,
+                    &user_id,
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to answer invite: {:?}", e);
+                    Status::internal("Failed to answer invite")
+                })?,
+            true => self
+                .answer_yay(
+                    &self.channel_manager.get_channel().await.map_err(|e| {
+                        error!("Failed to get channel: {:?}", e);
+                        Status::internal("Failed to get channel")
+                    })?,
+                    answer_invite_request.invite_id,
+                    &user_id,
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to answer invite: {:?}", e);
+                    Status::internal("Failed to answer invite")
+                })?,
+        }
+
+        Ok(Response::new(AnswerInviteResponse { success: true }))
+    }
 }
 
 impl InviteManagerImpl {
@@ -271,6 +326,66 @@ impl InviteManagerImpl {
         let handle = tokio::spawn(async move {
             consumer.consume(&channel, tag, message_rx).await;
         });
+
+        Ok(())
+    }
+
+    async fn answer_yay(
+        &self,
+        channel: &Channel,
+        invite_id: i32,
+        user_id: &str,
+    ) -> anyhow::Result<()> {
+        info!("Answering yay to invite {}", invite_id);
+        declare_accept_invites_exchange(&channel)
+            .await
+            .map_err(|e| {
+                error!("Failed to declare exchange: {:?}", e);
+                Status::internal("Failed to declare exchange")
+            })?;
+        let rabbit_invite_accept = RabbitInviteAccept {
+            invite_id,
+            user_id: user_id.to_string(),
+        };
+
+        let serialized_message = serde_json::to_string(&rabbit_invite_accept).map_err(|e| {
+            error!("Failed to serialize message: {:?}", e);
+            Status::internal("Failed to serialize message")
+        })?;
+
+        channel
+            .basic_publish(
+                BasicProperties::default(),
+                serialized_message.into_bytes(),
+                BasicPublishArguments::new(ACCEPT_INVITES_EXCHANGE, "")
+                    .mandatory(false)
+                    .immediate(false)
+                    .finish(),
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to publish message: {:?}", e);
+                Status::internal("Failed to publish message")
+            })?;
+
+        Ok(())
+    }
+
+    async fn answer_nay(
+        &self,
+        connection: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        invite_id: i32,
+        user_id: &str,
+    ) -> anyhow::Result<()> {
+        info!("Answering nay to invite {}", invite_id);
+        diesel::delete(invites::table)
+            .filter(invites::id.eq(invite_id))
+            .filter(invites::invitee_user_id.eq(user_id))
+            .execute(connection)
+            .map_err(|e| {
+                error!("Failed to delete invite: {:?}", e);
+                Status::internal("Failed to delete invite")
+            })?;
 
         Ok(())
     }

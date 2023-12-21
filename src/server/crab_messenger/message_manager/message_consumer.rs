@@ -45,23 +45,6 @@ impl AsyncConsumer for RabbitConsumer {
         let send_result = self.tx.send(Ok(grpc_message)).await;
         debug!("Send result: {:?}", send_result);
 
-        // defer! {
-        //     debug!("Client likely disconnected, deleting queue.");
-        //     if let Err(e) = channel
-        //         .queue_delete(
-        //             QueueDeleteArguments::new(&self.queue_name)
-        //                 .if_empty(false)
-        //                 .if_unused(false)
-        //                 .finish(),
-        //         )
-        //         .await
-        //     {
-        //         error!("Failed to delete queue: {:?}", e);
-        //     }
-        //     info!("Queue deleted");
-        //     return;
-        // }
-
         if let Err(e) = channel
             .basic_ack(BasicAckArguments::new(deliver.delivery_tag(), false))
             .await

@@ -1,6 +1,6 @@
-use diesel::{Queryable, Selectable};
+use diesel::{Insertable, Queryable, Selectable};
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::utils::persistence::schema::users_chats)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[diesel(belongs_to(Book))]

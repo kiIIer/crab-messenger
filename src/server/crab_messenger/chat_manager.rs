@@ -1,7 +1,7 @@
 use crate::utils::db_connection_manager::{
     build_db_connection_manager_module, DBConnectionManager, DBConnectionManagerModule,
 };
-use crate::utils::messenger::{Chat as GChat, GetUserChatsRequest, Chats};
+use crate::utils::messenger::{Chat as GChat, Chats, GetUserChatsRequest};
 use crate::utils::persistence::chat::Chat;
 use crate::utils::persistence::schema::{chats, users_chats};
 use async_trait::async_trait;

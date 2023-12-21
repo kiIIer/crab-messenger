@@ -24,7 +24,7 @@ service Messenger {
   rpc GetRelatedUsers(GetRelatedUsersRequest) returns (Users);
 
   rpc SendInvite(SendInviteRequest) returns (SendInviteResponse);
-  //  rpc AnswerInvite(AnswerInviteRequest) returns (AnswerInviteResponse);
+  rpc AnswerInvite(AnswerInviteRequest) returns (AnswerInviteResponse);
   rpc Invites(InvitesRequest) returns (stream Invite);
   rpc GetInvites(GetInvitesRequest) returns (GetInvitesResponse);
 }

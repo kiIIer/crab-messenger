@@ -83,3 +83,9 @@ name = "test-invites"
 
 [[bin]]
 name = "test-get-invites"
+
+[[bin]]
+name = "test-decline-invite"
+
+[[bin]]
+name = "test-accept-invite"

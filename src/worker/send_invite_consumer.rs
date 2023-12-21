@@ -43,6 +43,7 @@ impl SendInviteConsumer {
         Self { connection_manager }
     }
 
+    #[instrument(skip(self, channel, deliver, content))]
     async fn process_invite(
         &self,
         channel: &Channel,
@@ -61,11 +62,13 @@ impl SendInviteConsumer {
         Ok(())
     }
 
+    #[instrument(skip(self, content))]
     fn deserialize_message(&self, content: &[u8]) -> Result<InsertInvite, serde_json::Error> {
         let message_str = String::from_utf8_lossy(content);
         serde_json::from_str::<InsertInvite>(&message_str)
     }
 
+    #[instrument(skip(self, db_connection, channel, deliver))]
     async fn insert_and_publish_message(
         &self,
         db_connection: &mut PgConnection,
@@ -78,6 +81,7 @@ impl SendInviteConsumer {
         Ok(())
     }
 
+    #[instrument(skip(self, db_connection, insert_invite))]
     fn insert_invite(
         &self,
         db_connection: &mut PgConnection,
@@ -88,6 +92,7 @@ impl SendInviteConsumer {
             .get_result(db_connection)
     }
 
+    #[instrument(skip(self, channel, invite, deliver))]
     async fn publish_message(
         &self,
         channel: &Channel,

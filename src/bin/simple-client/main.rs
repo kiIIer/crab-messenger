@@ -14,7 +14,11 @@ async fn main() -> Result<()> {
     let mut client = MessengerClient::connect("http://[::1]:50051").await?;
 
     let (mut tx, rx) = mpsc::channel(4);
-    let auth_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjdhXzJnWkdRSmoxOFZWRmV2Z3VMeSJ9.eyJpc3MiOiJodHRwczovL2NyYWItbWVzc2VuZ2VyLmV1LmF1dGgwLmNvbS8iLCJzdWIiOiJnb29nbGUtb2F1dGgyfDEwODcwNjE4MTUyMTYyMjc4MzgzMyIsImF1ZCI6WyJjcmFiLWFwaSIsImh0dHBzOi8vY3JhYi1tZXNzZW5nZXIuZXUuYXV0aDAuY29tL3VzZXJpbmZvIl0sImlhdCI6MTcwMjkxNjUzMywiZXhwIjoxNzAzMDAyOTMzLCJhenAiOiJhODVYYzVKeXFOM2c1N1dQVUxWdTRqVE92amhOV2JXbSIsInNjb3BlIjoib3BlbmlkIHByb2ZpbGUgZW1haWwgb2ZmbGluZV9hY2Nlc3MifQ.dYSxPGkn4UQwRUNVlxf7IXky7Mix_Iff22_jLjFbb-L845ON7lPfp3HOmlwti6T9BFlQWhMI4YDHDTsNKSUihi22Ldbu2yEOKhTnVgBWlo2NYlXlZM0HhK2jMxJ_GuYPqX14O32F_HxEjwVwx-nMf9A-9lXyDZMQjd_nh978_dzTe-7Fz19W7XFP6oUyHmF9sJ19YHKHlK8kW1E6_VGMe6fy4vmlSTSkkhiLS_uGykE5qTfR2ZrljALeAerXyTqCuC7IQZdgAn15izyxllT3QA4CPriKUVTTdb_n75xRmFi1KEGi-Cv8EnQ0NqZwDUCy_80UE4AsD7aEiQtuc3SC2w";
+    // Mike
+    let auth_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjdhXzJnWkdRSmoxOFZWRmV2Z3VMeSJ9.eyJpc3MiOiJodHRwczovL2NyYWItbWVzc2VuZ2VyLmV1LmF1dGgwLmNvbS8iLCJzdWIiOiJnb29nbGUtb2F1dGgyfDEwODcwNjE4MTUyMTYyMjc4MzgzMyIsImF1ZCI6WyJjcmFiLWFwaSIsImh0dHBzOi8vY3JhYi1tZXNzZW5nZXIuZXUuYXV0aDAuY29tL3VzZXJpbmZvIl0sImlhdCI6MTcwMzEyOTU2NSwiZXhwIjoxNzAzMjE1OTY1LCJhenAiOiJhODVYYzVKeXFOM2c1N1dQVUxWdTRqVE92amhOV2JXbSIsInNjb3BlIjoib3BlbmlkIHByb2ZpbGUgZW1haWwgb2ZmbGluZV9hY2Nlc3MifQ.qrNHbSv-LqFBrhQEFCsW__cRfLYHOMZzepNh2ARtupYwsb4_RyRSAHK2mHBt6vbmKSTPP-_U4iWh6OspPIraEywXk98rJCuDyGVXSiEgQiJV2GIkL_agjTZNXvd0ygAj--7loQN5x1pamvLtkQfwgIHZlCbP4DB7gWYxxs9SO3bHFr2CU0kHZ46YwfgT42-yVGb5AAl8PCa8QxfqLnsyxWWv3quZSAwdCnskB-EvCj_oTMAIXSM53FAmO510fE6qSI-KjnIEq_9tp3e-M_l_v57vmb9bCYgdBtKqtIGJMFpEhI-KmuTCBkTG6IaKOw67fXur2fCvr55YKkdMM_yPNg";
+
+    // Shata
+    // let auth_token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjdhXzJnWkdRSmoxOFZWRmV2Z3VMeSJ9.eyJpc3MiOiJodHRwczovL2NyYWItbWVzc2VuZ2VyLmV1LmF1dGgwLmNvbS8iLCJzdWIiOiJhdXRoMHw2NTc4MjFmNWExZTliZjk5NDUwZmZmMjIiLCJhdWQiOlsiY3JhYi1hcGkiLCJodHRwczovL2NyYWItbWVzc2VuZ2VyLmV1LmF1dGgwLmNvbS91c2VyaW5mbyJdLCJpYXQiOjE3MDMxMzAyNDYsImV4cCI6MTcwMzIxNjY0NiwiYXpwIjoiYTg1WGM1SnlxTjNnNTdXUFVMVnU0alRPdmpoTldiV20iLCJzY29wZSI6Im9wZW5pZCBwcm9maWxlIGVtYWlsIG9mZmxpbmVfYWNjZXNzIn0.CE9hi9s5bgPYK_V2qWhgAhDs77jWArnbBLr7Amjj2nDkJA3K8e1KcgMjtvUhyg0uCG-dwGm6xs7AZ43txqSGULeOIa31eimuh7Du3rr8OQeHdXP4ZF9XPPo_cJ8rf6WyV2UZGmnFe9Eekg7imV2QonoBZ_BLvvzxepWqP3NSWiCPVidNwKtU8hozLRgwM9Gbs9nr6ecUm7qSisO7QDLD5S4plzW-CYPnuTcO0Mtc5k6YyvvHQN7-j3Vjyqecg-Px5YHoF_K-NTp-YzYWJA1z5fpmOyUgRMKqrqYSGxcP7-MVBh-Ok3Q0HCCRk1REOnhe4LiYrksQwSO_K-W1Lmd_Ww";
 
     // Create a MetadataValue from the token
     let token_metadata =
@@ -58,7 +62,7 @@ async fn main() -> Result<()> {
 
         let send_msg = SendMessage {
             text: trimmed.to_string(),
-            chat_id: 1, // Using 1 as the chat ID
+            chat_id: 2,
         };
 
         tx.send(send_msg).await.expect("Failed to send message");

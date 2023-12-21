@@ -21,9 +21,9 @@ use crate::server::crab_messenger::user_manager::{
 };
 use crate::utils::messenger::messenger_server::Messenger;
 use crate::utils::messenger::{
-    Chats, GetInvitesRequest, GetInvitesResponse, GetMessagesRequest, GetRelatedUsersRequest,
-    GetUserChatsRequest, Invite as ProtoInvite, InvitesRequest, Message as MMessage, Messages,
-    SendInviteRequest, SendMessage, Users,
+    AnswerInviteRequest, AnswerInviteResponse, Chats, GetInvitesRequest, GetInvitesResponse,
+    GetMessagesRequest, GetRelatedUsersRequest, GetUserChatsRequest, Invite as ProtoInvite,
+    InvitesRequest, Message as MMessage, Messages, SendInviteRequest, SendMessage, Users,
 };
 use crate::utils::messenger::{SearchUserQuery, SendInviteResponse};
 
@@ -98,6 +98,13 @@ impl Messenger for CrabMessengerImpl {
         request: Request<SendInviteRequest>,
     ) -> Result<Response<SendInviteResponse>, Status> {
         self.invite_manager.send_invite(request).await
+    }
+
+    async fn answer_invite(
+        &self,
+        request: Request<AnswerInviteRequest>,
+    ) -> Result<Response<AnswerInviteResponse>, Status> {
+        self.invite_manager.answer_invite(request).await
     }
 
     type InvitesStream = InviteResponseStream;
@@ -179,6 +186,13 @@ impl Messenger for MessengerAdapter {
         request: Request<SendInviteRequest>,
     ) -> Result<Response<SendInviteResponse>, Status> {
         self.messenger.send_invite(request).await
+    }
+
+    async fn answer_invite(
+        &self,
+        request: Request<AnswerInviteRequest>,
+    ) -> Result<Response<AnswerInviteResponse>, Status> {
+        self.messenger.answer_invite(request).await
     }
 
     type InvitesStream = InviteResponseStream;

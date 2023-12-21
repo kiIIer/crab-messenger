@@ -17,6 +17,7 @@ pub trait MessageStreamHandler: Interface {
         &self,
         stream: Streaming<SendMessage>,
         channel: &Channel,
+        user_id: String,
     ) -> Result<(), anyhow::Error>;
 }
 
@@ -56,14 +57,14 @@ impl MessageStreamHandler for MessageStreamHandlerImpl {
         &self,
         mut stream: Streaming<SendMessage>,
         channel: &Channel,
+        user_id: String,
     ) -> Result<(), anyhow::Error> {
         loop {
             let message_result = stream.message().await;
             match message_result {
                 Ok(Some(send_msg)) => {
                     let insert_message = InsertMessage {
-                        // TODO: get user_id from auth
-                        user_id: "google-oauth2|108706181521622783833".to_string(),
+                        user_id: user_id.clone(),
                         text: send_msg.text,
                         chat_id: send_msg.chat_id,
                     };

@@ -13,12 +13,14 @@ use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
 use crate::utils::rabbit_declares::{
-    declare_invites_exchange, declare_messages_exchange, declare_new_message_exchange,
-    declare_send_invite_exchange, setup_error_handling, NEW_MESSAGE_EXCHANGE, SEND_INVITE_EXCHANGE,
+    declare_accept_invites_exchange, declare_invites_exchange, declare_new_message_exchange,
+    declare_send_invite_exchange, setup_error_handling, ACCEPT_INVITES_EXCHANGE,
+    NEW_MESSAGE_EXCHANGE, SEND_INVITE_EXCHANGE,
 };
 use crate::worker::new_message_consumer::NewMessageConsumer;
 use crate::worker::send_invite_consumer::SendInviteConsumer;
 
+mod accept_invite_consumer;
 mod new_message_consumer;
 mod send_invite_consumer;
 
@@ -49,11 +51,6 @@ impl Worker for WorkerImpl {
         })?;
 
         declare_new_message_exchange(&channel).await.map_err(|e| {
-            error!("Failed to declare exchange: {:?}", e);
-            e
-        })?;
-
-        declare_messages_exchange(&channel).await.map_err(|e| {
             error!("Failed to declare exchange: {:?}", e);
             e
         })?;
@@ -135,6 +132,46 @@ impl Worker for WorkerImpl {
 
         channel
             .basic_consume(invite_consumer, args)
+            .await
+            .map_err(|e| {
+                error!("Failed to consume: {:?}", e);
+                e
+            })?;
+
+        declare_accept_invites_exchange(&channel)
+            .await
+            .map_err(|e| {
+                error!("Failed to declare exchange: {:?}", e);
+                e
+            })?;
+        let accept_invite_queue = "accept_invite_queue";
+        channel
+            .queue_declare(QueueDeclareArguments::durable_client_named(
+                accept_invite_queue,
+            ))
+            .await
+            .map_err(|e| {
+                error!("Failed to declare queue: {:?}", e);
+                e
+            })?;
+
+        channel
+            .queue_bind(QueueBindArguments::new(
+                accept_invite_queue,
+                ACCEPT_INVITES_EXCHANGE,
+                "",
+            ))
+            .await
+            .map_err(|e| {
+                error!("Failed to bind queue: {:?}", e);
+                e
+            })?;
+
+        let accept_invite_consumer =
+            accept_invite_consumer::AcceptInviteConsumer::new(self.connection_manager.clone());
+        let args = BasicConsumeArguments::new(accept_invite_queue, "worker-accept-invites");
+        channel
+            .basic_consume(accept_invite_consumer, args)
             .await
             .map_err(|e| {
                 error!("Failed to consume: {:?}", e);

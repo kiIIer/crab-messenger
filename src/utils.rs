@@ -10,6 +10,8 @@ pub mod persistence;
 
 pub mod rabbit_declares;
 
+pub mod rabbit_types;
+
 pub fn generate_random_string(length: usize) -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
