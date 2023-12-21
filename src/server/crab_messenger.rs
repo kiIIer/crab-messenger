@@ -20,11 +20,7 @@ use crate::server::crab_messenger::user_manager::{
     build_user_manager_module, UserManager, UserManagerModule,
 };
 use crate::utils::messenger::messenger_server::Messenger;
-use crate::utils::messenger::{
-    AnswerInviteRequest, AnswerInviteResponse, Chats, GetInvitesRequest, GetInvitesResponse,
-    GetMessagesRequest, GetRelatedUsersRequest, GetUserChatsRequest, Invite as ProtoInvite,
-    InvitesRequest, Message as MMessage, Messages, SendInviteRequest, SendMessage, Users,
-};
+use crate::utils::messenger::{AnswerInviteRequest, AnswerInviteResponse, Chats, CreateChatRequest, CreateChatResponse, GetInvitesRequest, GetInvitesResponse, GetMessagesRequest, GetRelatedUsersRequest, GetUserChatsRequest, Invite as ProtoInvite, InvitesRequest, Message as MMessage, Messages, SendInviteRequest, SendMessage, Users};
 use crate::utils::messenger::{SearchUserQuery, SendInviteResponse};
 
 mod chat_manager;
@@ -84,6 +80,10 @@ impl Messenger for CrabMessengerImpl {
         request: Request<GetUserChatsRequest>,
     ) -> Result<Response<Chats>, Status> {
         self.chat_manager.get_user_chats(request).await
+    }
+
+    async fn create_chat(&self, request: Request<CreateChatRequest>) -> Result<Response<CreateChatResponse>, Status> {
+       self.chat_manager.create_chat(request).await 
     }
 
     async fn get_related_users(
@@ -172,6 +172,10 @@ impl Messenger for MessengerAdapter {
         request: Request<GetUserChatsRequest>,
     ) -> Result<Response<Chats>, Status> {
         self.messenger.get_user_chats(request).await
+    }
+
+    async fn create_chat(&self, request: Request<CreateChatRequest>) -> Result<Response<CreateChatResponse>, Status> {
+        self.messenger.create_chat(request).await
     }
 
     async fn get_related_users(
