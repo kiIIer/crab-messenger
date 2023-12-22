@@ -12,7 +12,7 @@ use crate::utils::db_connection_manager::DBConnectionManager;
 use crate::utils::persistence::message::{InsertMessage, Message};
 use crate::utils::persistence::schema::{messages, users_chats};
 use crate::utils::persistence::users_chats::UsersChats;
-use crate::utils::rabbit_declares::{send_to_error_queue, MESSAGES_EXCHANGE};
+use crate::utils::rabbit_declares::{send_to_error_queue, MESSAGES_EXCHANGE, messages_exchange_name};
 
 #[derive(Clone)]
 pub struct NewMessageConsumer {
@@ -124,12 +124,11 @@ impl NewMessageConsumer {
         deliver: &Deliver,
     ) -> Result<(), anyhow::Error> {
         let serialized_message = serde_json::to_string(message)?;
-        let exchange_name = format!("{}-{}", MESSAGES_EXCHANGE, message.chat_id);
         channel
             .basic_publish(
                 BasicProperties::default(),
                 serialized_message.into_bytes(),
-                BasicPublishArguments::new(&exchange_name, "")
+                BasicPublishArguments::new(&messages_exchange_name(&message.chat_id.to_string()), "")
                     .mandatory(false)
                     .immediate(false)
                     .finish(),

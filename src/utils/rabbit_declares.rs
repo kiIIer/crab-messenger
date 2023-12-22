@@ -3,6 +3,7 @@ use amqprs::channel::{
     QueueDeclareArguments,
 };
 use amqprs::error::Error;
+use amqprs::FieldValue::u;
 use amqprs::{BasicProperties, FieldTable};
 use tracing::{debug, instrument};
 
@@ -19,19 +20,26 @@ pub const ACCEPT_INVITES_EXCHANGE: &str = "W_AcceptInviteExchange";
 
 pub const CHAT_CONNECT_EXCHANGE: &str = "S_ChatConnectExchange";
 
-pub async fn declare_chat_connect_exchange(channel: &Channel) -> Result<(), Error> {
+pub async fn declare_chat_connect_exchange(channel: &Channel, user_id: &str) -> Result<(), Error> {
     channel
         .exchange_declare(
-            ExchangeDeclareArguments::of_type(CHAT_CONNECT_EXCHANGE, ExchangeType::Fanout)
-                .passive(false)
-                .durable(false)
-                .auto_delete(false)
-                .internal(false)
-                .no_wait(false)
-                .arguments(FieldTable::default())
-                .finish(),
+            ExchangeDeclareArguments::of_type(
+                &chat_connect_exchange_name(user_id),
+                ExchangeType::Fanout,
+            )
+            .passive(false)
+            .durable(false)
+            .auto_delete(false)
+            .internal(false)
+            .no_wait(false)
+            .arguments(FieldTable::default())
+            .finish(),
         )
         .await
+}
+
+pub fn chat_connect_exchange_name(user_id: &str) -> String {
+    format!("{}-{}", CHAT_CONNECT_EXCHANGE, user_id)
 }
 
 pub async fn declare_accept_invites_exchange(channel: &Channel) -> Result<(), Error> {
@@ -66,8 +74,27 @@ pub async fn declare_messages_exchange(channel: &Channel, chat: &str) -> Result<
     debug!("Declaring messages exchange: {}", chat);
     channel
         .exchange_declare(
+            ExchangeDeclareArguments::of_type(&messages_exchange_name(chat), ExchangeType::Fanout)
+                .passive(false)
+                .durable(false)
+                .auto_delete(false)
+                .internal(false)
+                .no_wait(false)
+                .arguments(FieldTable::default())
+                .finish(),
+        )
+        .await
+}
+
+pub fn messages_exchange_name(chat: &str) -> String {
+    format!("{}-{}", MESSAGES_EXCHANGE, chat)
+}
+
+pub async fn declare_invites_exchange(channel: &Channel, user_id: &str) -> Result<(), Error> {
+    channel
+        .exchange_declare(
             ExchangeDeclareArguments::of_type(
-                &format!("{}-{}", MESSAGES_EXCHANGE, chat),
+                &invites_exchange_name(user_id),
                 ExchangeType::Fanout,
             )
             .passive(false)
@@ -81,19 +108,8 @@ pub async fn declare_messages_exchange(channel: &Channel, chat: &str) -> Result<
         .await
 }
 
-pub async fn declare_invites_exchange(channel: &Channel) -> Result<(), Error> {
-    channel
-        .exchange_declare(
-            ExchangeDeclareArguments::of_type(INVITES_EXCHANGE, ExchangeType::Fanout)
-                .passive(false)
-                .durable(false)
-                .auto_delete(false)
-                .internal(false)
-                .no_wait(false)
-                .arguments(FieldTable::default())
-                .finish(),
-        )
-        .await
+pub fn invites_exchange_name(user_id: &str) -> String {
+    format!("{}-{}", INVITES_EXCHANGE, user_id)
 }
 
 pub async fn setup_error_handling(channel: &Channel) -> Result<(), Error> {

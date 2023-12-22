@@ -65,11 +65,6 @@ impl Worker for WorkerImpl {
             e
         })?;
 
-        declare_invites_exchange(&channel).await.map_err(|e| {
-            error!("Failed to declare exchange: {:?}", e);
-            e
-        })?;
-
         let new_message_queue = "new_message_queue";
         channel
             .queue_declare(QueueDeclareArguments::durable_client_named(

@@ -29,13 +29,14 @@ use crate::utils::messenger::{
     InvitesRequest, SendInviteRequest, SendInviteResponse,
 };
 use crate::utils::persistence::invite::Invite;
-use crate::utils::persistence::schema::invites;
+use crate::utils::persistence::schema::{invites, users_chats};
+use crate::utils::persistence::users_chats::UsersChats;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
 use crate::utils::rabbit_declares::{
     declare_accept_invites_exchange, declare_invites_exchange, declare_send_invite_exchange,
-    ACCEPT_INVITES_EXCHANGE, INVITES_EXCHANGE, SEND_INVITE_EXCHANGE,
+    invites_exchange_name, ACCEPT_INVITES_EXCHANGE, INVITES_EXCHANGE, SEND_INVITE_EXCHANGE,
 };
 use crate::utils::rabbit_types::RabbitInviteAccept;
 
@@ -97,8 +98,29 @@ impl InviteManager for InviteManagerImpl {
             .to_str()
             .unwrap()
             .to_string();
-
         let invite_request = request.into_inner();
+
+        let binding = users_chats::table
+            .filter(users_chats::user_id.eq(&inviter_user_id))
+            .filter(users_chats::chat_id.eq(invite_request.chat_id))
+            .first::<UsersChats>(
+                &mut self.db_connection_manager.get_connection().map_err(|e| {
+                    error!("Failed to get connection: {:?}", e);
+                    Status::internal("Failed to get connection")
+                })?,
+            )
+            .optional()
+            .map_err(|e| {
+                error!("Failed to get binding: {:?}", e);
+                Status::internal("Failed to get binding")
+            })?;
+
+        if binding.is_none() {
+            return Err(Status::permission_denied(
+                "You are not a member of this chat",
+            ));
+        }
+
         let rabbit_invite = RabbitCreateInvite {
             inviter_user_id,
             invitee_user_id: invite_request.user_id,
@@ -152,13 +174,12 @@ impl InviteManager for InviteManagerImpl {
             .unwrap()
             .to_string();
         let (tx, rx) = mpsc::channel(16);
-        let channel = self.setup_invite_channel().await?;
+        let channel = self.setup_invite_channel(&listener_user_id).await?;
 
         let queue_name = generate_random_string(16);
-        let routing_key = &listener_user_id;
 
         debug!("Setting up queue");
-        self.setup_queue(&channel, &queue_name, &routing_key)
+        self.setup_queue(&channel, &queue_name, &listener_user_id)
             .await?;
 
         let consumer = RabbitConsumer::new(tx.clone(), queue_name.clone());
@@ -226,6 +247,10 @@ impl InviteManager for InviteManagerImpl {
 
         let answer_invite_request = request.into_inner();
 
+        if answer_invite_request.invite_id != user_id {
+            return Err(Status::permission_denied("You can't answer this invite"));
+        }
+
         match answer_invite_request.accept {
             false => self
                 .answer_nay(
@@ -263,16 +288,18 @@ impl InviteManager for InviteManagerImpl {
 
 impl InviteManagerImpl {
     #[tracing::instrument(skip(self))]
-    async fn setup_invite_channel(&self) -> Result<Channel, Status> {
+    async fn setup_invite_channel(&self, user_id: &str) -> Result<Channel, Status> {
         let channel = self.channel_manager.get_channel().await.map_err(|e| {
             error!("Failed to get channel: {:?}", e);
             Status::internal("Failed to get channel")
         })?;
 
-        declare_invites_exchange(&channel).await.map_err(|e| {
-            error!("Failed to declare exchange: {:?}", e);
-            Status::internal("Failed to declare exchange")
-        })?;
+        declare_invites_exchange(&channel, user_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to declare exchange: {:?}", e);
+                Status::internal("Failed to declare exchange")
+            })?;
 
         Ok(channel)
     }
@@ -282,7 +309,7 @@ impl InviteManagerImpl {
         &self,
         channel: &Channel,
         queue_name: &str,
-        routing_key: &str,
+        user_id: &str,
     ) -> Result<(), Status> {
         channel
             .queue_declare(
@@ -298,7 +325,9 @@ impl InviteManagerImpl {
             })?;
 
         channel
-            .queue_bind(QueueBindArguments::new(queue_name, INVITES_EXCHANGE, routing_key).finish())
+            .queue_bind(
+                QueueBindArguments::new(queue_name, &invites_exchange_name(user_id), "").finish(),
+            )
             .await
             .map_err(|e| {
                 error!("Failed to bind queue: {:?}", e);
@@ -378,8 +407,18 @@ impl InviteManagerImpl {
         user_id: &str,
     ) -> anyhow::Result<()> {
         info!("Answering nay to invite {}", invite_id);
-        diesel::delete(invites::table)
+
+        let nay_invite = invites::table
             .filter(invites::id.eq(invite_id))
+            .filter(invites::invitee_user_id.eq(user_id))
+            .first::<Invite>(connection)
+            .map_err(|e| {
+                error!("Failed to get invite: {:?}", e);
+                Status::internal("Failed to get invite")
+            })?;
+
+        diesel::delete(invites::table)
+            .filter(invites::chat_id.eq(nay_invite.chat_id))
             .filter(invites::invitee_user_id.eq(user_id))
             .execute(connection)
             .map_err(|e| {

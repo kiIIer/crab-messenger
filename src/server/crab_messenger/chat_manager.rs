@@ -10,7 +10,7 @@ use crate::utils::persistence::users_chats::UsersChats;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
-use crate::utils::rabbit_declares::CHAT_CONNECT_EXCHANGE;
+use crate::utils::rabbit_declares::{CHAT_CONNECT_EXCHANGE, chat_connect_exchange_name};
 use amqprs::channel::BasicPublishArguments;
 use amqprs::BasicProperties;
 use async_trait::async_trait;
@@ -126,7 +126,7 @@ impl ChatManager for ChatManagerImpl {
             .basic_publish(
                 BasicProperties::default(),
                 chat.id.to_string().into_bytes(),
-                BasicPublishArguments::new(CHAT_CONNECT_EXCHANGE, &user_id)
+                BasicPublishArguments::new(&chat_connect_exchange_name(&user_id), "")
                     .mandatory(false)
                     .immediate(false)
                     .finish(),

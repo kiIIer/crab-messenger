@@ -1,4 +1,4 @@
-use crate::utils::rabbit_declares::{declare_messages_exchange, MESSAGES_EXCHANGE};
+use crate::utils::rabbit_declares::{declare_messages_exchange, MESSAGES_EXCHANGE, messages_exchange_name};
 use amqprs::channel::{BasicAckArguments, BasicRejectArguments, Channel, QueueBindArguments};
 use amqprs::consumer::AsyncConsumer;
 use amqprs::{BasicProperties, Deliver};
@@ -24,10 +24,9 @@ impl AsyncConsumer for ConnectConsumer {
         basic_properties: BasicProperties,
         content: Vec<u8>,
     ) {
-        let routing_key = String::from_utf8(content).unwrap();
+        let user_id = String::from_utf8(content).unwrap();
 
-        let exchange_name = format!("{}-{}", MESSAGES_EXCHANGE, routing_key);
-        if let Err(e) = declare_messages_exchange(channel, &routing_key)
+        if let Err(e) = declare_messages_exchange(channel, &user_id)
             .await
             .map_err(|e| {
                 error!("Failed to declare exchange: {:?}", e);
@@ -42,7 +41,7 @@ impl AsyncConsumer for ConnectConsumer {
             return;
         }
         if let Err(e) = channel
-            .queue_bind(QueueBindArguments::new(&self.queue_name, &exchange_name, "").finish())
+            .queue_bind(QueueBindArguments::new(&self.queue_name, &messages_exchange_name(&user_id), "").finish())
             .await
             .map_err(|e| {
                 error!("Failed to bind queue: {:?}", e);

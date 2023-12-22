@@ -15,6 +15,7 @@ use crate::utils::messenger::{GetRelatedUsersRequest, SearchUserQuery, User as G
 use crate::utils::persistence::chat::Chat;
 use crate::utils::persistence::schema::{chats, users, users_chats};
 use crate::utils::persistence::user::User as DBUser;
+use crate::utils::persistence::users_chats::UsersChats;
 use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
@@ -131,26 +132,38 @@ impl UserManager for UserManagerImpl {
                 Status::internal("Failed to get chats")
             })?;
 
-        let related_users = users_chats::table
+        let related_user_bindings = users_chats::table
             .filter(
                 users_chats::chat_id.eq_any(related_chats.iter().map(|c| c.id).collect::<Vec<_>>()),
             )
-            .inner_join(users::table.on(users_chats::user_id.eq(users::id)))
-            .select(users::all_columns)
-            .load::<DBUser>(&mut connection)
+            .select(users_chats::all_columns)
+            .distinct()
+            .load::<UsersChats>(&mut connection)
             .map_err(|e| {
-                error!("Failed to get users: {}", e);
-                Status::internal("Failed to get users")
+                error!("Failed to get user bindings: {}", e);
+                Status::internal("Failed to get user bindings")
             })?;
 
-        let related_users = related_users
+        let related_user_ids = related_user_bindings
+            .into_iter()
+            .map(|b| b.user_id)
+            .collect::<Vec<_>>();
+
+        let related_users = users::table
+            .filter(users::id.eq_any(related_user_ids))
+            .distinct()
+            .load::<DBUser>(&mut connection)
+            .map_err(|e| {
+                error!("Failed to get unique users: {}", e);
+                Status::internal("Failed to get unique users")
+            })?;
+
+        let users = related_users
             .into_iter()
             .map(|u| u.into())
-            .collect::<Vec<GUser>>();
+            .collect::<Vec<_>>();
 
-        return Ok(Response::new(Users {
-            users: related_users,
-        }));
+        Ok(Response::new(Users { users }))
     }
 }
 

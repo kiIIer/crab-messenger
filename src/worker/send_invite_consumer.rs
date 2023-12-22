@@ -10,7 +10,9 @@ use tracing::{debug, error, instrument, warn};
 use crate::utils::db_connection_manager::DBConnectionManager;
 use crate::utils::persistence::invite::{InsertInvite, Invite};
 use crate::utils::persistence::schema::invites;
-use crate::utils::rabbit_declares::{send_to_error_queue, INVITES_EXCHANGE};
+use crate::utils::rabbit_declares::{
+    declare_invites_exchange, invites_exchange_name, send_to_error_queue, INVITES_EXCHANGE,
+};
 
 #[derive(Clone)]
 pub struct SendInviteConsumer {
@@ -100,17 +102,17 @@ impl SendInviteConsumer {
         deliver: &Deliver,
     ) -> Result<(), anyhow::Error> {
         let serialized_message = serde_json::to_string(invite)?;
+        declare_invites_exchange(channel, &invite.invitee_user_id)
+            .await
+            .map_err(|e| anyhow::Error::new(e))?;
         channel
             .basic_publish(
                 BasicProperties::default(),
                 serialized_message.into_bytes(),
-                BasicPublishArguments::new(
-                    INVITES_EXCHANGE,
-                    &format!("{}", invite.invitee_user_id),
-                )
-                .mandatory(false)
-                .immediate(false)
-                .finish(),
+                BasicPublishArguments::new(&invites_exchange_name(&invite.invitee_user_id), "")
+                    .mandatory(false)
+                    .immediate(false)
+                    .finish(),
             )
             .await
             .map_err(|e| anyhow::Error::new(e))?;

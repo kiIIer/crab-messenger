@@ -30,8 +30,8 @@ use crate::utils::rabbit_channel_manager::{
     build_channel_manager_module, ChannelManager, ChannelManagerModule,
 };
 use crate::utils::rabbit_declares::{
-    declare_chat_connect_exchange, declare_messages_exchange, declare_new_message_exchange,
-    CHAT_CONNECT_EXCHANGE, MESSAGES_EXCHANGE,
+    chat_connect_exchange_name, declare_chat_connect_exchange, declare_messages_exchange,
+    declare_new_message_exchange, messages_exchange_name, CHAT_CONNECT_EXCHANGE, MESSAGES_EXCHANGE,
 };
 
 mod connect_consumer;
@@ -70,11 +70,11 @@ impl MessageManagerImpl {
         })
     }
 
-    async fn setup_new_messages_queue(
+    async fn setup_messages_queue(
         &self,
         channel: &Channel,
         queue_name: &str,
-        routing_key: &str,
+        chat_id: &str,
     ) -> Result<(), Status> {
         declare_new_message_exchange(channel).await.map_err(|e| {
             error!("Failed to declare exchange: {:?}", e);
@@ -94,11 +94,13 @@ impl MessageManagerImpl {
                 Status::internal("Failed to declare queue")
             })?;
 
-        let exchange_name = format!("{}-{}", MESSAGES_EXCHANGE, routing_key);
-        declare_messages_exchange(channel, routing_key).await.map_err(|e| {
-            error!("Failed to declare exchange: {:?}", e);
-            Status::internal("Failed to declare exchange")
-        })?;
+        let exchange_name = messages_exchange_name(&chat_id);
+        declare_messages_exchange(channel, chat_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to declare exchange: {:?}", e);
+                Status::internal("Failed to declare exchange")
+            })?;
         channel
             .queue_bind(QueueBindArguments::new(queue_name, &exchange_name, "").finish())
             .await
@@ -114,12 +116,14 @@ impl MessageManagerImpl {
         &self,
         channel: &Channel,
         queue_name: &str,
-        routing_key: &str,
+        user_id: &str,
     ) -> Result<(), Status> {
-        declare_chat_connect_exchange(channel).await.map_err(|e| {
-            error!("Failed to declare exchange: {:?}", e);
-            Status::internal("Failed to declare exchange")
-        })?;
+        declare_chat_connect_exchange(channel, user_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to declare exchange: {:?}", e);
+                Status::internal("Failed to declare exchange")
+            })?;
 
         channel
             .queue_declare(
@@ -136,7 +140,8 @@ impl MessageManagerImpl {
 
         channel
             .queue_bind(
-                QueueBindArguments::new(queue_name, CHAT_CONNECT_EXCHANGE, routing_key).finish(),
+                QueueBindArguments::new(queue_name, &chat_connect_exchange_name(user_id), "")
+                    .finish(),
             )
             .await
             .map_err(|e| {
@@ -222,8 +227,8 @@ impl MessageManager for MessageManagerImpl {
             })?;
 
         for chat in my_chats {
-            let routing_key = format!("{}", chat.chat_id);
-            self.setup_new_messages_queue(&channel, &queue_name, &routing_key)
+            let chat_id = format!("{}", chat.chat_id);
+            self.setup_messages_queue(&channel, &queue_name, &chat_id)
                 .await?;
         }
 
@@ -253,6 +258,13 @@ impl MessageManager for MessageManagerImpl {
         request: Request<GetMessagesRequest>,
     ) -> Result<Response<Messages>, Status> {
         info!("Received request to get messages");
+        let metadata = request.metadata();
+        let user_id = metadata
+            .get("user_id")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
 
         let mut connection = self.db_connection_manager.get_connection().map_err(|e| {
             error!("Failed to get DB connection from pool: {}", e);
@@ -261,6 +273,25 @@ impl MessageManager for MessageManagerImpl {
 
         let get_messages_req = request.into_inner();
         let chat_id_filter = get_messages_req.chat_id;
+
+        let binding = users_chats::table
+            .filter(users_chats::user_id.eq(user_id))
+            .filter(users_chats::chat_id.eq(chat_id_filter))
+            .first::<UsersChats>(&mut connection)
+            .optional()
+            .map_err(|e| {
+                error!("Failed to get binding: {}", e);
+                Status::internal(format!("Failed to get binding: {}", e))
+            })?;
+
+        debug!("Binding: {:?}", binding);
+
+        if binding.is_none() {
+            return Err(Status::not_found(format!(
+                "No binding found for chat_id: {}",
+                chat_id_filter
+            )));
+        }
 
         let created_before_filter = get_messages_req.created_before.unwrap(); // assuming it's present
         let created_before_naive = chrono::NaiveDateTime::from_timestamp_opt(

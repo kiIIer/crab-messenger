@@ -14,7 +14,8 @@ use crate::utils::persistence::invite::Invite;
 use crate::utils::persistence::schema::{invites, users_chats};
 use crate::utils::persistence::users_chats::UsersChats;
 use crate::utils::rabbit_declares::{
-    declare_chat_connect_exchange, CHAT_CONNECT_EXCHANGE, INVITES_EXCHANGE,
+    chat_connect_exchange_name, declare_chat_connect_exchange, CHAT_CONNECT_EXCHANGE,
+    INVITES_EXCHANGE,
 };
 use crate::utils::rabbit_types::RabbitInviteAccept;
 
@@ -123,16 +124,18 @@ impl AcceptInviteConsumer {
         chat_id: i32,
         user_id: &str,
     ) -> Result<(), anyhow::Error> {
-        declare_chat_connect_exchange(channel).await.map_err(|e| {
-            error!("Failed to declare exchange: {:?}", e);
-            anyhow::Error::new(e)
-        })?;
+        declare_chat_connect_exchange(channel, user_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to declare exchange: {:?}", e);
+                anyhow::Error::new(e)
+            })?;
 
         channel
             .basic_publish(
                 BasicProperties::default(),
                 chat_id.to_string().into_bytes(),
-                BasicPublishArguments::new(CHAT_CONNECT_EXCHANGE, user_id)
+                BasicPublishArguments::new(&chat_connect_exchange_name(&user_id), "")
                     .mandatory(false)
                     .immediate(false)
                     .finish(),
