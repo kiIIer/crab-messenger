@@ -247,7 +247,20 @@ impl InviteManager for InviteManagerImpl {
 
         let answer_invite_request = request.into_inner();
 
-        if answer_invite_request.invite_id != user_id {
+        let db_invite = invites::table
+            .filter(invites::id.eq(answer_invite_request.invite_id))
+            .first::<Invite>(
+                &mut self.db_connection_manager.get_connection().map_err(|e| {
+                    error!("Failed to get connection: {:?}", e);
+                    Status::internal("Failed to get connection")
+                })?,
+            )
+            .map_err(|e| {
+                error!("Failed to get invite: {:?}", e);
+                Status::internal("Failed to get invite")
+            })?;
+
+        if db_invite.invitee_user_id != user_id {
             return Err(Status::permission_denied("You can't answer this invite"));
         }
 

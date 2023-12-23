@@ -70,11 +70,15 @@ pub fn build_channel_manager_module() -> Arc<ChannelManagerModule> {
     dotenv().ok();
 
     let rabbit_host = env::var("RABBIT_HOST").expect("RABBIT_HOST must be set");
+    let rabbit_port = env::var("RABBIT_PORT")
+        .expect("RABBIT_PORT must be set")
+        .parse()
+        .expect("RABBIT_PORT must be a number");
     let rabbit_user = env::var("RABBIT_USER").expect("RABBIT_USER must be set");
     let rabbit_password = env::var("RABBIT_PASSWORD").expect("RABBIT_PASSWORD must be set");
 
     let connection_args =
-        OpenConnectionArguments::new(&rabbit_host, 5672, &rabbit_user, &rabbit_password);
+        OpenConnectionArguments::new(&rabbit_host, rabbit_port, &rabbit_user, &rabbit_password);
 
     let connection = Arc::new(Mutex::new(None));
     Arc::new(

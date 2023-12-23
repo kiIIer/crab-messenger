@@ -37,6 +37,7 @@ headers = "0.4.0"
 jsonwebtoken = "9.2.0"
 url = "2.4.1"
 tonic-async-interceptor = "0.10.0"
+dotenv_codegen = "0.15.0"
 
 
 [build-dependencies]
@@ -92,3 +93,6 @@ name = "test-accept-invite"
 
 [[bin]]
 name = "test-create-chat"
+
+[[bin]]
+name = "env-playground"
