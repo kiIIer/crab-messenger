@@ -1,0 +1,107 @@
+@startuml
+!theme crt-green
+interface Server {
+    + run_server(self: Arc<Self>) -> anyhow::Result<()>
+}
+
+struct ServerImpl {
+    - crab_messenger: Arc<dyn CrabMessenger<ChatStream = ChatResponseStream, InvitesStream = InviteResponseStream>>
+    - auth_interceptor_factory: Arc<dyn AuthInterceptorFactory>
+}
+
+ServerImpl ..|> Server
+
+interface AuthInterceptorFactory {
+    + create(&self) -> AuthInterceptor
+}
+
+struct AuthInterceptorFactoryImpl {
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+    - user_manager: Arc<dyn UserManager>
+    - client_id: String
+    - client_secret: String
+    - audience: String
+    - server_n: String
+    - server_e: String
+}
+
+AuthInterceptorFactoryImpl ..|> AuthInterceptorFactory
+
+AuthInterceptorFactory --o ServerImpl
+
+interface ChannelManager {
+    + get_channel(&self) -> Result<Channel, anyhow::Error>
+}
+
+struct ChannelManagerImpl {
+    - connection: Arc<Mutex<Option<Connection>>>
+    - connection_args: OpenConnectionArguments
+}
+
+ChannelManagerImpl ..|> ChannelManager
+
+interface DBConnectionManager {
+    + get_connection(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, r2d2::Error>
+}
+
+struct DBConnectionManagerImpl {
+    - pool: Pool<ConnectionManager<PgConnection>>
+}
+
+DBConnectionManagerImpl ..|> DBConnectionManager
+
+DBConnectionManager --o AuthInterceptorFactoryImpl
+
+struct AuthInterceptor {
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+    - user_manager: Arc<dyn UserManager>
+    - client_id: String
+    - client_secret: String
+    - audience: String
+    - server_n: String
+    - server_e: String
+}
+
+DBConnectionManager --o AuthInterceptor
+
+ServerImpl --> AuthInterceptor
+
+interface UserManager {
+    + search_user(&self, request: Request<SearchUserQuery>) -> Result<Response<Users>, Status>
+    + create_user(&self, user: DBUser) -> Result<(), anyhow::Error>
+    + get_related_users(&self, request: Request<GetRelatedUsersRequest>) -> Result<Response<Users>, Status>
+}
+
+struct UserManagerImpl {
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+    - channel_manager: Arc<dyn ChannelManager>
+}
+
+UserManagerImpl ..|> UserManager
+UserManagerImpl o-- DBConnectionManager
+UserManagerImpl o-- ChannelManager
+
+UserManager --o AuthInterceptorFactoryImpl
+UserManager --o AuthInterceptor
+
+interface Messenger {
+    + chat(request: Request<Streaming<SendMessage>>) -> Result<Response<ChatResponseStream>, Status>
+    + get_messages(request: Request<GetMessagesRequest>) -> Result<Response<Messages>, Status>
+    + search_user(request: Request<SearchUserQuery>) -> Result<Response<Users>, Status>
+    + get_user_chats(request: Request<GetUserChatsRequest>) -> Result<Response<Chats>, Status>
+    + create_chat(request: Request<CreateChatRequest>) -> Result<Response<CreateChatResponse>, Status>
+    + get_related_users(request: Request<GetRelatedUsersRequest>) -> Result<Response<Users>, Status>
+    + send_invite(request: Request<SendInviteRequest>) -> Result<Response<SendInviteResponse>, Status>
+    + answer_invite(request: Request<AnswerInviteRequest>) -> Result<Response<AnswerInviteResponse>, Status>
+    + invites(request: Request<InvitesRequest>) -> Result<Response<InviteResponseStream>, Status>
+    + get_invites(request: Request<GetInvitesRequest>) -> Result<Response<GetInvitesResponse>, Status>
+}
+
+interface CrabMessenger {
+}
+
+CrabMessenger ..|> Messenger
+
+CrabMessenger --o ServerImpl
+
+@enduml

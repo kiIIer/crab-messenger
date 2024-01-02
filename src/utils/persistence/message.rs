@@ -25,7 +25,7 @@ pub struct InsertMessage {
 
 impl From<ProtoMessage> for Message {
     fn from(proto_msg: ProtoMessage) -> Self {
-        let timestamp = proto_msg.created_at.unwrap(); // Safe to unwrap based on your constraints
+        let timestamp = proto_msg.created_at.unwrap();
 
         Message {
             id: proto_msg.id,

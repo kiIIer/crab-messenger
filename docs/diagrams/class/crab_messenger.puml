@@ -1,0 +1,155 @@
+@startuml
+!theme crt-green
+left to right direction
+
+interface Messenger {
+    + chat(request: Request<Streaming<SendMessage>>) -> Result<Response<ChatResponseStream>, Status>
+    + get_messages(request: Request<GetMessagesRequest>) -> Result<Response<Messages>, Status>
+    + search_user(request: Request<SearchUserQuery>) -> Result<Response<Users>, Status>
+    + get_user_chats(request: Request<GetUserChatsRequest>) -> Result<Response<Chats>, Status>
+    + create_chat(request: Request<CreateChatRequest>) -> Result<Response<CreateChatResponse>, Status>
+    + get_related_users(request: Request<GetRelatedUsersRequest>) -> Result<Response<Users>, Status>
+    + send_invite(request: Request<SendInviteRequest>) -> Result<Response<SendInviteResponse>, Status>
+    + answer_invite(request: Request<AnswerInviteRequest>) -> Result<Response<AnswerInviteResponse>, Status>
+    + invites(request: Request<InvitesRequest>) -> Result<Response<InviteResponseStream>, Status>
+    + get_invites(request: Request<GetInvitesRequest>) -> Result<Response<GetInvitesResponse>, Status>
+}
+
+interface CrabMessenger {
+}
+
+CrabMessenger ..|> Messenger
+
+interface ChannelManager {
+    + get_channel(&self) -> Result<Channel, anyhow::Error>
+}
+
+struct ChannelManagerImpl {
+    - connection: Arc<Mutex<Option<Connection>>>
+    - connection_args: OpenConnectionArguments
+}
+
+ChannelManagerImpl ..|> ChannelManager
+
+interface DBConnectionManager {
+    + get_connection(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, r2d2::Error>
+}
+
+struct DBConnectionManagerImpl {
+    - pool: Pool<ConnectionManager<PgConnection>>
+}
+
+struct CrabMessengerImpl {
+    - channel_manager: Arc<Mutex<dyn ChannelManager>>
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+}
+
+DBConnectionManagerImpl ..|> DBConnectionManager
+
+struct CrabMessengerImpl {
+    - message_manager: Arc<dyn MessageManager<ChatStream = ChatResponseStream>>
+    - user_manager: Arc<dyn UserManager>
+    - invite_manager: Arc<dyn InviteManager>
+    - chat_manager: Arc<dyn ChatManager>
+}
+
+CrabMessengerImpl ..|> CrabMessenger
+
+interface UserManager {
+    + search_user(request: Request<SearchUserQuery>) -> Result<Response<Users>, Status>
+    + create_user(user: DBUser) -> Result<(), anyhow::Error>
+    + get_related_users(request: Request<GetRelatedUsersRequest>) -> Result<Response<Users>, Status>
+}
+
+class UserManagerImpl {
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+    - channel_manager: Arc<dyn ChannelManager>
+}
+
+UserManagerImpl ..|> UserManager
+CrabMessengerImpl o-- UserManager
+
+interface MessageManager {
+    + chat(request: Request<Streaming<SendMessage>>) -> Result<Response<Self::ChatStream>, Status>
+    + get_messages(request: Request<GetMessagesRequest>) -> Result<Response<Messages>, Status>
+}
+
+class MessageManagerImpl {
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+    - channel_manager: Arc<dyn ChannelManager>
+    - message_stream_handler: Arc<dyn MessageStreamHandler>
+}
+
+MessageManagerImpl ..|> MessageManager
+MessageManagerImpl o-- MessageStreamHandler
+
+CrabMessengerImpl o-- MessageManager
+
+interface MessageStreamHandler {
+    + handle_stream(stream: Streaming<SendMessage>, channel: &Channel, user_id: String) -> Result<(), anyhow::Error>
+}
+
+class MessageStreamHandlerImpl {
+}
+
+MessageStreamHandlerImpl ..|> MessageStreamHandler
+
+class ConnectConsumer {
+    - queue_name: String
+}
+
+ConnectConsumer ..|> AsyncConsumer
+
+interface AsyncConsumer {
+    + consume(&mut self, channel: &Channel, deliver: Deliver, basic_properties: BasicProperties, content: Vec<u8>)
+}
+
+MessageManagerImpl --> ConnectConsumer
+
+class MessageRabbitConsumer {
+    - tx: mpsc::Sender<Result<GMessage, Status>>
+    - queue_name: String
+}
+
+MessageRabbitConsumer ..|> AsyncConsumer
+MessageManagerImpl --> MessageRabbitConsumer
+
+interface ChatManager {
+    + get_user_chats(request: Request<GetUserChatsRequest>) -> Result<Response<Chats>, Status>
+    + create_chat(request: Request<CreateChatRequest>) -> Result<Response<CreateChatResponse>, Status>
+}
+
+class ChatManagerImpl {
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+    - channel_manager: Arc<dyn ChannelManager>
+}
+
+ChatManagerImpl ..|> ChatManager
+
+CrabMessengerImpl o-- ChatManager
+
+interface InviteManager {
+    + send_invite(request: Request<SendInviteRequest>) -> Result<Response<SendInviteResponse>, Status>
+    + invites(request: Request<InvitesRequest>) -> Result<Response<InviteResponseStream>, Status>
+    + get_invites(request: Request<GetInvitesRequest>) -> Result<Response<GetInvitesResponse>, Status>
+    + answer_invite(request: Request<AnswerInviteRequest>) -> Result<Response<AnswerInviteResponse>, Status>
+}
+
+class InviteManagerImpl {
+    - channel_manager: Arc<dyn ChannelManager>
+    - db_connection_manager: Arc<dyn DBConnectionManager>
+}
+
+InviteManagerImpl ..|> InviteManager
+
+CrabMessengerImpl o-- InviteManager
+
+class InviteRabbitConsumer {
+    - tx: mpsc::Sender<Result<Invite, Status>>
+    - queue_name: String
+}
+
+InviteRabbitConsumer ..|> AsyncConsumer
+InviteManagerImpl --> InviteRabbitConsumer
+
+@enduml

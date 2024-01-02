@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let module = build_worker_module();
-    let server: Arc<dyn Worker> = module.resolve();
-    server.run_worker().await?;
+    let worker: Arc<dyn Worker> = module.resolve();
+    worker.run_worker().await?;
     Ok(())
 }

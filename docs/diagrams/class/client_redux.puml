@@ -1,85 +1,62 @@
 @startuml client_redux
 !theme crt-green
 
-enum Action{
-    KeyPress{key_press: KeyPressAction}
-
-    LoadChats
-    LoadChatsSuccesses{chats: Vec<Chat>}
-    LoadChatsFail{err: Error}
-
-    LoadChat
-    LoadChatSuccesses{chat: Chat}
-    LoadChatFail{err: Error}
-
-    LoadUsers
-    LoadUsersSuccesses{users: Vec<User>}
-    LoadUsersFail{err: Error}
-
-    LoadUser
-    LoadUserSuccesses{user: User}
-    LoadUserFail{err: Error}
-
-    CreateChat{name: String}
-    CreateChatSuccesses{id: i32}
-    CreateChatFail{err: Error}
-
-    CreateInvite{invite: Invite}
-    CreateInviteSuccesses
-    CreateInviteFail{err: Error}
-
-    AnswerInvite{answer: InviteAnswer}
-    AnswerInviteSuccesses{invite: Invite}
-    AnswerInviteFail{err: Error}
-
-    ReceiveInvite{invite: Invite}
-    
-    SendMessage{message: Message}
-    SendMessageSuccesses
-    SendMessageFail{err: Error}
-
-    ReceiveMessage{message: Message}
+struct State {
+    + tab_state
+    + auth_state
+    + code
+    + link
+    + messages
+    + should_exit
+    ...
 }
 
-interface Store{
-    + dispatch(action: Action)
-    + select() -> AppState
+interface View {
+    + draw(&self, frame, rect, state) -> Result<()>
 }
 
-struct StoreImpl
-
-StoreImpl --|> Store : implements
-
-interface Reducer{
-    + condition(action: Action, state: AppState)
-    + reduce(action: Action, state: AppState) -> AppState
+interface Store {
+    + get_dispatch(&self) -> Sender<Action>
+    + get_select(&self) -> Receiver<State>
+    + process(&self, handle) -> Result<()>
 }
 
-interface ReducerVecFactory{
-    + create() -> Vec<Reducer>
+interface Reducer {
+    + reduce(&self, state, action, dispatch_tx, handle) -> ReduceResult
 }
 
-struct ReducerVecFactoryImpl
+interface AppReducer {}
 
-ReducerVecFactoryImpl --|> ReducerVecFactory : implements
+AppReducer ..|> Reducer
+AppReducer --* Store
 
-ReducerVecFactory --o StoreImpl
+interface LoginReducer {}
 
-Reducer --o StoreImpl
+LoginReducer ..|> Reducer
+LoginReducer --* AppReducer
 
-struct EditReducer
+interface ChatsReducer {}
 
-EditReducer --|> Reducer : implements
-EditReducer --o ReducerVecFactoryImpl
+ChatsReducer ..|> Reducer
+ChatsReducer --* AppReducer
 
-struct NavigationReducer
+interface MessagesReducer {}
 
-NavigationReducer --|> Reducer : implements
-NavigationReducer --o ReducerVecFactoryImpl
+MessagesReducer ..|> Reducer
+MessagesReducer --* ChatsReducer
 
-struct LoadChatsReducer
+enum ReduceResult {
+    + Consumed{State}
+    + ConsumedButKindaNot
+    + Ignored
+}
 
-LoadChatsReducer --|> Reducer : implements
-LoadChatsReducer --o ReducerVecFactoryImpl
+enum Action {
+    + Input{Event}
+    + StartLogin
+    + Login{StartFlowResponse}
+    + LoginSuccess{AuthState}
+    + Tick
+}
 
 @enduml

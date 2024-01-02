@@ -1,0 +1,60 @@
+@startuml
+!theme crt-green
+
+interface Messenger {
+  + Chat(stream SendMessage) returns (stream Message);
+
+  + GetMessages(GetMessagesRequest) returns (Messages);
+
+  + SearchUser(SearchUserQuery) returns (Users);
+
+  + GetUserChats(GetUserChatsRequest) returns (Chats);
+
+  + CreateChat(CreateChatRequest) returns (CreateChatResponse);
+
+  + GetRelatedUsers(GetRelatedUsersRequest) returns (Users);
+
+  + SendInvite(SendInviteRequest) returns (SendInviteResponse);
+
+  + AnswerInvite(AnswerInviteRequest) returns (AnswerInviteResponse);
+
+  + Invites(InvitesRequest) returns (stream Invite);
+
+  + GetInvites(GetInvitesRequest) returns (GetInvitesResponse);
+}
+
+struct MessengerImpl {}
+
+MessengerImpl ..|> Messenger
+
+interface UserManager{
+    + search_user(SearchUserQuery) -> Users
+    + create_user(User) -> Result<()>
+    + get_related_users(GetRelatedUsersRequest) -> Users
+}
+
+UserManager --o MessengerImpl
+
+interface MessageManager{
+    +chat(Streaming<SendMessage>) -> ChatStream
+    +get_messages(GetMessagesRequest) -> Messages
+}
+
+MessageManager --o MessengerImpl
+
+interface InviteManager{
+    +send_invite(SendInviteRequest) -> SendInviteResponse
+    +answer_invite(AnswerInviteRequest) -> AnswerInviteResponse
+    +invites(InvitesRequest) -> InvitesStream
+    +get_invites(GetInvitesRequest) -> GetInvitesResponse
+}
+
+InviteManager --o MessengerImpl
+
+interface ChatManager{
+    +get_user_chats(GetUserChatsRequest) -> Chats
+    +create_chat(CreateChatRequest) -> CreateChatResponse
+}
+
+ChatManager --o MessengerImpl
+@enduml

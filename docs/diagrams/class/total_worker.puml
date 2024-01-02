@@ -1,0 +1,72 @@
+@startuml
+!theme crt-green
+top to bottom direction
+
+interface Worker{
+    + run_worker(self: Arc<Self>) -> Result<()>
+}
+
+struct WorkerImpl{
+    - connection_manager: Arc<dyn DBConnectionManager>
+
+    - channel_manager: Arc<dyn ChannelManager>
+}
+
+WorkerImpl ..|> Worker
+
+interface ChannelManager {
+    + get_channel(&self) -> Result<Channel, anyhow::Error>
+}
+
+struct ChannelManagerImpl {
+    - connection: Arc<Mutex<Option<Connection>>>
+    - connection_args: OpenConnectionArguments
+}
+
+ChannelManagerImpl ..|> ChannelManager
+
+ChannelManager --o WorkerImpl
+
+interface DBConnectionManager {
+    + get_connection(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, r2d2::Error>
+}
+
+struct DBConnectionManagerImpl {
+    - pool: Pool<ConnectionManager<PgConnection>>
+}
+
+DBConnectionManagerImpl ..|> DBConnectionManager
+
+DBConnectionManager --o WorkerImpl
+
+struct SendInviteConsumer {
+    - connection_manager: Arc<dyn DBConnectionManager>
+}
+
+DBConnectionManager --o SendInviteConsumer
+
+SendInviteConsumer --|> AsyncConsumer
+interface AsyncConsumer {
+     + consume(&mut self, channel: &Channel, deliver: Deliver, properties: BasicProperties, content: Vec<u8>) -> ()
+}
+
+struct NewMessageConsumer {
+    - connection_manager: Arc<dyn DBConnectionManager>
+}
+
+DBConnectionManager --o NewMessageConsumer
+
+NewMessageConsumer --|> AsyncConsumer
+
+struct AcceptInviteConsumer {
+    - connection_manager: Arc<dyn DBConnectionManager>
+}
+
+DBConnectionManager --o AcceptInviteConsumer
+
+AcceptInviteConsumer --|> AsyncConsumer
+
+WorkerImpl --> SendInviteConsumer
+WorkerImpl --> NewMessageConsumer
+WorkerImpl --> AcceptInviteConsumer
+@enduml
