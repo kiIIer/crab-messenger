@@ -66,8 +66,8 @@ impl ChatManager for ChatManagerImpl {
             .select(chats::all_columns)
             .load::<Chat>(&mut connection)
             .map_err(|e| {
-                error!("Failed to get chats: {}", e);
-                Status::internal("Failed to get chats")
+                error!("Failed to get chats_container: {}", e);
+                Status::internal("Failed to get chats_container")
             })?;
 
         let chats: Vec<GChat> = chats.into_iter().map(|c| c.into()).collect();

@@ -71,8 +71,8 @@ impl AcceptInviteConsumer {
         self.notify_chats(channel, chat_id, &accept_invite.user_id)
             .await
             .map_err(|e| {
-                error!("Failed to notify chats: {:?}", e);
-                Status::internal("Failed to notify chats")
+                error!("Failed to notify chats_container: {:?}", e);
+                Status::internal("Failed to notify chats_container")
             })?;
 
         channel

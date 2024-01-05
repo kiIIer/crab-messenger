@@ -1,7 +1,11 @@
-use crate::utils::auth::AuthState;
+use crate::client::redux::state::client_chat::{ChatsState, ClientChatState};
 use crate::client::redux::state::tab::TabState;
+use crate::utils::auth::AuthState;
+use crate::utils::messenger::{Chat, SendMessage, User};
 use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc;
 
+pub mod client_chat;
 pub mod tab;
 
 #[derive(Default, Clone)]
@@ -11,7 +15,12 @@ pub struct State {
     pub code: Option<String>,
     pub link: Option<String>,
     pub messages: Arc<RwLock<Vec<String>>>,
+    pub users: Arc<RwLock<Vec<User>>>,
+    pub chats: Arc<RwLock<Vec<ClientChatState>>>,
+    pub selected_chat: Option<usize>,
+    pub chats_state: ChatsState,
     pub should_exit: bool,
+    pub send_message_tx: Option<mpsc::Sender<SendMessage>>,
 }
 
 // impl State {

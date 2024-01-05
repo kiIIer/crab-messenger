@@ -1,9 +1,9 @@
-use crate::utils::auth::AuthModule;
-use crate::utils::auth::{build_auth_module, Auth};
 use crate::client::redux::action::Action::LoginSuccess;
 use crate::client::redux::action::{Action, ReduceResult};
 use crate::client::redux::reducers::Reducer;
 use crate::client::redux::state::State;
+use crate::utils::auth::AuthModule;
+use crate::utils::auth::{build_auth_module, Auth};
 use crossbeam_channel::Sender;
 use shaku::{module, Component, Interface};
 use std::sync::Arc;
@@ -74,6 +74,7 @@ impl Reducer for LoginReducerImpl {
                 let tx = dispatch_tx.clone();
                 let auth = self.auth.clone();
 
+                tx.send(Action::Init).expect("Couldn't send the stuff");
                 handle.spawn(async move {
                     tokio::time::sleep(Duration::from_secs(expires_in as u64)).await;
                     let result = auth.request_refresh_token(&refresh_token).await;

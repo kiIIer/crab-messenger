@@ -128,8 +128,8 @@ impl UserManager for UserManagerImpl {
             .select(chats::all_columns)
             .load::<Chat>(&mut connection)
             .map_err(|e| {
-                error!("Failed to get chats: {}", e);
-                Status::internal("Failed to get chats")
+                error!("Failed to get chats_container: {}", e);
+                Status::internal("Failed to get chats_container")
             })?;
 
         let related_user_bindings = users_chats::table

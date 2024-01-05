@@ -222,8 +222,8 @@ impl MessageManager for MessageManagerImpl {
             .select(users_chats::all_columns)
             .load::<UsersChats>(&mut connection)
             .map_err(|e| {
-                error!("Failed to get chats: {}", e);
-                Status::internal("Failed to get chats")
+                error!("Failed to get chats_container: {}", e);
+                Status::internal("Failed to get chats_container")
             })?;
 
         for chat in my_chats {

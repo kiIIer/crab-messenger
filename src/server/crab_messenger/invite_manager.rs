@@ -224,8 +224,8 @@ impl InviteManager for InviteManagerImpl {
             .select(invites::all_columns)
             .load::<Invite>(&mut connection)
             .map_err(|e| {
-                error!("Failed to get chats: {}", e);
-                Status::internal("Failed to get chats")
+                error!("Failed to get chats_container: {}", e);
+                Status::internal("Failed to get chats_container")
             })?;
 
         Ok(Response::new(GetInvitesResponse {

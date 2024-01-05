@@ -17,6 +17,8 @@ impl From<TabState> for usize {
         match value {
             TabState::Login => 0,
             TabState::Home => 1,
+            TabState::Chats => 2,
+            TabState::Users => 3,
         }
     }
 }
@@ -71,7 +73,7 @@ pub fn build_view_tab_module() -> Arc<ViewTabModule> {
     Arc::new(
         ViewTabModule::builder()
             .with_component_parameters::<TabViewImpl>(TabViewImplParameters {
-                titles: vec!["Login".to_string(), "Home".to_string()],
+                titles: vec!["Login".to_string(), "Home".to_string(), "Chats".to_string(), "Users".to_string()],
             })
             .build(),
     )
