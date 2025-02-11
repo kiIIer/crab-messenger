@@ -1,0 +1,46 @@
+@startuml server
+!theme crt-green
+left to right direction
+
+[CrabMessenger]
+
+component Crab{
+
+    [InviteService]
+
+    [Messenger]
+
+    [ChatNotifier]
+
+    [ChatService]
+
+    [UserService]
+}
+
+CrabMessenger -(0- Messenger
+CrabMessenger -(0- InviteService
+CrabMessenger -(0- ChatNotifier
+CrabMessenger -(0- ChatService
+CrabMessenger -(0- UserService
+
+component Rabbit{
+    [InviteConsumer]
+    [MessageConsumer]
+    [InviteAcceptedConsumer]
+    [Producer]
+}
+InviteService -(0- InviteConsumer
+InviteService -(0- Producer
+
+Messenger -(0- Producer
+Messenger -(0- MessageConsumer
+ChatNotifier -(0- InviteAcceptedConsumer
+
+[ChannelFactory]
+
+InviteConsumer -(0- ChannelFactory
+Producer -(0- ChannelFactory
+MessageConsumer -(0- ChannelFactory
+InviteAcceptedConsumer -(0- ChannelFactory
+
+@enduml

@@ -1,0 +1,46 @@
+@startuml db
+!theme crt-green
+left to right direction
+
+entity users{
+    +id (PK)
+    username
+}
+
+entity messages {
+    +id (PK)
+    user_id (FK)
+    chat_id (FK)
+    timestamp
+    text
+}
+
+entity chats {
+    +id (PK)
+    name
+}
+
+entity invites{
+    +id (PK)
+    inviter_user_id (FK)
+    invitee_user_id (FK)
+    chat_id (FK)
+    timestamp
+}
+
+entity users_chats {
+    user_id (PK) (FK)
+    chat_id (PK) (FK)
+}
+
+users::id }o--|| users_chats::user_id
+chats::id}|--||users_chats::chat_id
+
+messages::user_id ||--o{ users::id
+messages::chat_id ||--o{ chats::id
+
+invites::inviter_user_id ||--o{ users::id
+invites::invitee_user_id ||--o{ users::id
+invites::chat_id ||--o{ chats::id
+
+@enduml

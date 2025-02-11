@@ -1,0 +1,24 @@
+@startuml simple-sequence
+!theme crt-green
+
+actor User
+participant Client
+participant Server
+database Postgres
+
+User -> Client : Open chats tab
+Client -> Server : getUserChats request
+Server -> Postgres : Query chats
+Postgres -> Server : Chats
+Server -> Client : getUserChats reply
+Client -> User : Draw chats
+
+note left
+    The same concept
+    applies to:
+    getChat
+    getUser
+    getMessages
+end note
+
+@enduml

@@ -1,0 +1,15 @@
+@startuml worker
+!theme crt-green
+
+[Worker]
+
+
+[Consumer]
+
+Worker -(0- Consumer
+
+[ChannelFactory]
+
+Consumer -(0- ChannelFactory
+
+@enduml

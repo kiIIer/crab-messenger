@@ -1,0 +1,22 @@
+@startuml accept-invite
+!theme crt-green
+
+actor User
+participant Client
+participant Server
+queue Rabbit
+participant Worker
+database Postgres
+
+User -> Client : Accept
+Client -> Server : InviteAnswer
+Server -> Rabbit : Send **AcceptInvite** message
+Rabbit -> Worker : Consume **AcceptInvite** message
+Worker -> Postgres : Delete invite, add chat
+Worker -> Rabbit : Publish **InviteAccepted** message
+Rabbit -> Server : Consume **InviteAccepted** message
+Server -> Server : AddChat
+Server -> Client : Reply
+Client -> User : All good bro
+
+@enduml

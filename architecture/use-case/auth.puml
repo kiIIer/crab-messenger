@@ -1,0 +1,15 @@
+@startuml auth
+!theme crt-green
+
+left to right direction
+
+:User: as User
+
+rectangle "Auth" {
+    User --> (Sign in)
+    User --> (Sign out)
+    User --> (Sign up)
+}
+
+
+@enduml

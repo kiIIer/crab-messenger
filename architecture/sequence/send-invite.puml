@@ -1,0 +1,33 @@
+@startuml send-invite
+!theme crt-green
+
+box Client 1
+actor User1
+participant Client1
+end box
+
+box Kubernetes
+participant Server
+queue Rabbit
+participant Worker
+database Postgres
+end box
+
+box Client 2
+participant Client2
+actor User2
+end box
+
+User1 -> Client1 : Send Invite
+Client1 -> Server : Request createInvite
+Server -> Rabbit : Request **CreateInvite** message
+Rabbit -> Worker : Consume **CreateInvite** message
+Worker -> Postgres : Save Invite
+Worker -> Server : Reply **CreateInvite** message
+Server -> Client1 : Reply Result
+Worker -> Rabbit : Send **InviteCreated** message
+Rabbit -> Server : Consume **InviteCreated** message
+Server -> Client2 : NotifyInvite
+Client2 -> User2 : New Invite
+
+@enduml
